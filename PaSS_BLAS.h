@@ -51,8 +51,8 @@ vec* mul(const vec* v, const mat* m);                       // calculate m'*v (s
 mat* mul(const vec* v, const vec* w);                       // calculate v*w'
 void mul(vec* v, const double d);                           // v *= d
 void mul(mat* m, const double d);                           // m *= d
-void mul(const mat* m, vec* v);                             // calculate v = m*v
-void mul(vec* v, const mat* m);                             // calculate v = m'*v
+void mul(const mat* m, vec* v);                             // v = m*v
+void mul(vec* v, const mat* m);                             // v = m'*v
 
 double inner(const vec* v);                                 // calculate sum(v.*v)
 double inner(const vec* a, const vec* b);                   // calculate sum(a.*b)
