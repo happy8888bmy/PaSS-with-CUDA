@@ -27,8 +27,8 @@ struct mat {
     vec** col;      // the array of columns
 };
 
-void print(const vec* v);   // print v
-void print(const mat* m);   // print m
+vec* init(const uint32_t* n);                       // initial a vector
+mat* init(const uint32_t* n, const uint32_t* m);    // initial a matrix
 
 vec* copy(const vec* m);    // copy v
 mat* copy(const mat* v);    // copy m
@@ -49,6 +49,9 @@ double inner(const vec* v);                 // calculate sum(v.*v)
 double inner(const vec* a, const vec* b);   // calculate sum(a.*b)
 double inner(const mat* m);                 // calculate sum(sum(m.*m))
 double inner(const mat* a, const mat* b);   // calculate sum(sum(a.*b))
+
+void print(const vec* v);   // print v
+void print(const mat* m);   // print m
 
 void insert(vec* v, const double e);    // add a new entry at the end
 void insert_col(mat* m, const vec* v);  // add a new col at the end
