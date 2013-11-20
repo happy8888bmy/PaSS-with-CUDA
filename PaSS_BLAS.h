@@ -27,8 +27,8 @@ struct mat {
     vec** col;      // the array of columns
 };
 
-vec* init(const uint32_t* n);                       // initial a vector
-mat* init(const uint32_t* n, const uint32_t* m);    // initial a matrix
+vec* init(const uint32_t* n);                       // initial a n-by-1 vector
+mat* init(const uint32_t* n, const uint32_t* m);    // initial a n-by-m matrix
 
 vec* copy(const vec* m);    // copy v
 mat* copy(const mat* v);    // copy m
