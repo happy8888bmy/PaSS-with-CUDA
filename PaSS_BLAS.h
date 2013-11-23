@@ -41,18 +41,20 @@ mat* copy(const mat* v);                                    // copy the matrix
 
 vec* add(const vec* a, const vec* b);                       // calculate a+b
 mat* add(const mat* a, const mat* b);                       // calculate a+b
-void add(vec* a, const vec* b);                             // a += b
-void add(mat* a, const mat* b);                             // a += b
+
+void addeq(vec* a, const vec* b);                           // a += b
+void addeq(mat* a, const mat* b);                           // a += b
 
 vec* mul(const vec* v, const double d);                     // calculate d*v
 mat* mul(const mat* m, const double d);                     // calculate d*m
 vec* mul(const mat* m, const vec* v);                       // calculate m*v
 vec* mul(const vec* v, const mat* m);                       // calculate m'*v (same as (v'*m)')
 mat* mul(const vec* v, const vec* w);                       // calculate v*w'
-void mul(vec* v, const double d);                           // v *= d
-void mul(mat* m, const double d);                           // m *= d
-void mul(const mat* m, vec* v);                             // v = m*v
-void mul(vec* v, const mat* m);                             // v = m'*v
+
+void muleq(vec* v, const double d);                         // v *= d
+void muleq(mat* m, const double d);                         // m *= d
+void muleq(const mat* m, vec* v);                           // v = m*v
+void muleq(vec* v, const mat* m);                           // v = m'*v
 
 double inner(const vec* v);                                 // calculate sum(v.*v)
 double inner(const vec* a, const vec* b);                   // calculate sum(a.*b)
