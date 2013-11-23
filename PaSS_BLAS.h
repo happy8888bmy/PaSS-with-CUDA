@@ -1,5 +1,5 @@
 /**
- * PaSS_BLAS.h <p>
+ * PaSS_BLAS.h
  * The basic linear algebra subprograms for PaSS
  *
  * @author emfo
