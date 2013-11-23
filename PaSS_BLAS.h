@@ -11,8 +11,8 @@
  * The vector struct
  */
 struct vec {
-    uint32_t* n;    // the length
-    double* e;      // the array of entries
+	uint32_t* n;    // the length
+	double* e;      // the array of entries
 };
 
 /**
@@ -22,9 +22,9 @@ struct vec {
  * </remarks>
  */
 struct mat {
-    uint32_t n_row; // the number of rows
-    uint32_t n_col; // the number of cols
-    vec** col;      // the array of columns
+	uint32_t n_row; // the number of rows
+	uint32_t n_col; // the number of cols
+	vec** col;      // the array of columns
 };
 
 vec* construct(const uint32_t* n);                          // construct a n-by-1 vector
