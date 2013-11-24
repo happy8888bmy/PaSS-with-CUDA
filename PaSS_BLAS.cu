@@ -23,6 +23,7 @@ struct vec {
     double* e;  // the array of entries
 };
 
+
 /**
  * The matrix struct
  * <remarks>
@@ -34,6 +35,7 @@ struct mat {
     uint32_t n_col; // the number of cols
     vec** col;      // the array of columns
 };
+
 
 /**
  * Construct a n-by-1 vector.
