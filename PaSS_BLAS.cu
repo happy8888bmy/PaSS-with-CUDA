@@ -16,19 +16,19 @@
 
 
 /**
-    * The vector struct
-    */
+ * The vector struct
+ */
 struct vec {
     uint32_t n; // the length
     double* e;  // the array of entries
 };
 
 /**
-    * The matrix struct
-    * <remarks>
-    * Note that *(m->col[i]->n) = m->n_row for all i, where m is a mat*
-    * </remarks>
-    */
+ * The matrix struct
+ * <remarks>
+ * Note that *(m->col[i]->n) = m->n_row for all i, where m is a mat*
+ * </remarks>
+ */
 struct mat {
     uint32_t n_row; // the number of rows
     uint32_t n_col; // the number of cols
