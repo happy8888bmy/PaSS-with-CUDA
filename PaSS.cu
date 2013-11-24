@@ -1,6 +1,8 @@
 /**
  * PaSS.cu
- * The main functions of PaSS with CUDA
+ * The main functions of PaSS
+ *
+ * @author emfo
  */
 
 #include "PaSS_BLAS.cu"
