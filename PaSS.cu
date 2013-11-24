@@ -1,70 +1,40 @@
-#include "PaSS_BLAS.cuh"
-
 /**
- * construct a n-by-1 vector
+ * PaSS.cu
+ * The main functions of PaSS with CUDA
  */
-__device__ vec* construct(const uint32_t n){
-    vec *v = (vec*)malloc(sizeof(vec));
-    v->n = (uint32_t*)malloc(sizeof(uint32_t));
-    *v->n = n;
-    v->e = (double*)malloc(n*sizeof(double));
-    return v;
-}
 
-/**
- * construct a p-by-q matrix
- */
-__device__ mat* construct(const uint32_t p, const uint32_t q){
-    mat *m = (mat*) malloc(sizeof(mat));
-    m->n_row = p;
-    m->n_col = q;
-    m->col = (vec**)malloc(q*sizeof(vec*));
-    for(vec **v = m->col; v < m->col+q; v++){
-        *v = (vec*)malloc(sizeof(vec));
-        (*v)->n = &m->n_row;
-        (*v)->e = (double*)malloc(p*sizeof(double));
-    }
-    return m;
-}
+#include "PaSS_BLAS.cu"
 
-/**
- *display the vector
- */
-__device__ void print(const vec* v){
-    for(uint32_t i = 0; i < *v->n; i++){
-        printf("%8.3f\n", v->e[i]);
-    }
-}
 
-/**
- *display the matrix
- */
-__device__ void print(const mat* m){
-    for(uint32_t j = 0; j < m->n_row; j++){
-        for(int i = 0; i < m->n_col; i++){
-            printf("%8.3f", m->col[i]->e[j]);
-        }
-        printf("\n");
-    }
-}
-
+// Test kernel function
 __global__ void testKernel(){
-    uint32_t n = 5, p = 3, q = 4;
-    vec* v = construct(n);
-    for(uint32_t i = 0; i < n; i++){
-        v->e[i] = (i+1)*(i+1);
+    uint32_t p = 4, q = 6;
+    mat* a = construct(p, q);
+    for(uint32_t i = 0; i < a->n_col; i++){
+        for(uint32_t j = 0; j < a->n_row; j++){
+            a->col[i]->e[j] = i*j;
+        }
+    }
+
+    vec* v = construct(p);
+    for(uint32_t i = 0; i < v->n; i++){
+        v->e[i] = i+1;
     }
     print(v);
+    shed(v);
+    print(v);
+    insert(v, 10);
+    print(v);
     
-    mat* m = construct(p, q);
-    for(uint32_t j = 0; j < m->n_row; j++){
-        for(uint32_t i = 0; i < m->n_col; i++){
-            m->col[i]->e[j] = (i+1)*(j+1);
-        }
-    }
-    print(m);
+    print(a);
+    insert_col(a, v);
+    print(a);
+    shed_col(a);
+    print(a);
 }
 
+
+// Test host function
 cudaError_t test()
 {
     cudaError_t cudaStatus;
@@ -79,7 +49,7 @@ cudaError_t test()
     // Launch a kernel on the GPU with one thread for each element.
     testKernel<<<1, 1>>>();
 
-    // Check for any errors launching the kernel
+    // Check for any errors launching the kernel.
     cudaStatus = cudaGetLastError();
     if (cudaStatus != cudaSuccess) {
         fprintf(stderr, "testKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
@@ -98,6 +68,8 @@ Error:
     return cudaStatus;
 }
 
+
+// Main function
 int main() {
     test();
     system("pause");
