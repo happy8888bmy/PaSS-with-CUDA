@@ -1,5 +1,5 @@
 /**
- * PaSS_BLAS.cuh
+ * PaSS_BLAS.cu
  * The basic linear algebra subprograms for PaSS
  *
  * @author emfo
