@@ -19,8 +19,8 @@
  * The vector struct
  */
 struct vec {
-    uint32_t n; // the length
-    double* e;  // the array of entries
+	uint32_t n; // the length
+	double* e;  // the array of entries
 };
 
 
@@ -31,9 +31,9 @@ struct vec {
  * </remarks>
  */
 struct mat {
-    uint32_t n_row; // the number of rows
-    uint32_t n_col; // the number of cols
-    vec** col;      // the array of columns
+	uint32_t n_row; // the number of rows
+	uint32_t n_col; // the number of cols
+	vec** col;      // the array of columns
 };
 
 
@@ -41,10 +41,10 @@ struct mat {
  * Construct a n-by-1 vector.
  */
 __device__ vec* construct(const uint32_t n){
-    vec* v = (vec*)malloc(sizeof(vec));
-    v->n = n;
-    v->e = (double*)malloc(n * sizeof(double));
-    return v;
+	vec* v = (vec*)malloc(sizeof(vec));
+	v->n = n;
+	v->e = (double*)malloc(n * sizeof(double));
+	return v;
 }
 
 
@@ -52,25 +52,37 @@ __device__ vec* construct(const uint32_t n){
  * Construct a p-by-q matrix.
  */
 __device__ mat* construct(const uint32_t p, const uint32_t q){
-    mat* a = (mat*) malloc(sizeof(mat));
-    a->n_row = p;
-    a->n_col = q;
-    a->col = (vec**)malloc(q * sizeof(vec*));
-    for(uint32_t i = 0; i < q; i++){
-        a->col[i] = (vec*)malloc(sizeof(vec));
-        a->col[i]->n = p;
-        a->col[i]->e = (double*)malloc(p * sizeof(double));
-    }
-    return a;
+	mat* a = (mat*) malloc(sizeof(mat));
+	a->n_row = p;
+	a->n_col = q;
+	a->col = (vec**)malloc(q * sizeof(vec*));
+	for(uint32_t i = 0; i < q; i++){
+		a->col[i] = (vec*)malloc(sizeof(vec));
+		a->col[i]->n = p;
+		a->col[i]->e = (double*)malloc(p * sizeof(double));
+	}
+	return a;
 }
+
+
+/**
+ * Construct a p-by-q matrix without constructing vectors.
+ */
+//__device__ mat* construct_half(const uint32_t p, const uint32_t q){
+//	mat* a = (mat*) malloc(sizeof(mat));
+//	a->n_row = p;
+//	a->n_col = q;
+//	a->col = (vec**)malloc(q * sizeof(vec*));
+//	return a;
+//}
 
 
 /**
  * Destruct the vector.
  */
 __device__ void destruct(vec* v){
-    free(v->e);
-    free(v);
+	free(v->e);
+	free(v);
 }
 
 
@@ -78,12 +90,12 @@ __device__ void destruct(vec* v){
  * Destruct the matrix.
  */
 __device__ void destruct(mat* a){
-    for(uint32_t i = 0; i < a->n_col; i++){
-        free(a->col[i]->e);
-        free(a->col[i]);
-    }
-    free(a->col);
-    free(a);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		free(a->col[i]->e);
+		free(a->col[i]);
+	}
+	free(a->col);
+	free(a);
 }
 
 
@@ -91,10 +103,10 @@ __device__ void destruct(mat* a){
  * Display the vector.
  */
 __device__ void print(const vec* v){
-    for(uint32_t i = 0; i < v->n; i++){
-        printf("%8.3f\n", v->e[i]);
-    }
-    printf("\n");
+	for(uint32_t i = 0; i < v->n; i++){
+		printf("%8.3f\n", v->e[i]);
+	}
+	printf("\n");
 }
 
 
@@ -102,13 +114,13 @@ __device__ void print(const vec* v){
  * Display the matrix.
  */
 __device__ void print(const mat* a){
-    for(uint32_t j = 0; j < a->n_row; j++){
-        for(uint32_t i = 0; i < a->n_col; i++){
-            printf("%8.3f", a->col[i]->e[j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
+	for(uint32_t j = 0; j < a->n_row; j++){
+		for(uint32_t i = 0; i < a->n_col; i++){
+			printf("%8.3f", a->col[i]->e[j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
 }
 
 
@@ -116,9 +128,9 @@ __device__ void print(const mat* a){
  * Copy the vector.
  */
 __device__ vec* copy(const vec* v){
-    vec* u = construct(v->n);
-    memcpy(u->e, v->e, v->n * sizeof(double));
-    return u;
+	vec* u = construct(v->n);
+	memcpy(u->e, v->e, v->n * sizeof(double));
+	return u;
 }
 
 
@@ -126,11 +138,11 @@ __device__ vec* copy(const vec* v){
  * Copy the matrix.
  */
 __device__ mat* copy(const mat* a){
-    mat* c = construct(a->n_row, a->n_col);
-    for(uint32_t i = 0; i < a->n_col; i++){
-        memcpy(c->col[i], a->col[i], a->n_row * sizeof(double));
-    }
-    return c;
+	mat* c = construct(a->n_row, a->n_col);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		memcpy(c->col[i], a->col[i], a->n_row * sizeof(double));
+	}
+	return c;
 }
 
 
@@ -138,15 +150,15 @@ __device__ mat* copy(const mat* a){
  * u = v+w.
  */
 __device__ vec* add(const vec* v, const vec* w){
-    if(v->n != w->n){
-        printf("add v+w not aligned!\n");
-        return NULL;
-    }
-    vec* u = construct(v->n);
-    for(uint32_t i = 0; i < v->n; i++){
-        u->e[i] = v->e[i] + w->e[i];
-    }
-    return u;
+	if(v->n != w->n){
+		printf("add v+w not aligned!\n");
+		return NULL;
+	}
+	vec* u = construct(v->n);
+	for(uint32_t i = 0; i < v->n; i++){
+		u->e[i] = v->e[i] + w->e[i];
+	}
+	return u;
 }
 
 
@@ -154,17 +166,17 @@ __device__ vec* add(const vec* v, const vec* w){
  * c = a+b.
  */
 __device__ mat* add(const mat* a, const mat* b){
-    if(a->n_col != b->n_col || a->n_row != b->n_row){
-        printf("add a+b not aligned!\n");
-        return NULL;
-    }
-    mat* c = construct(a->n_row, a->n_col);
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            c->col[i]->e[j] = a->col[i]->e[j] + b->col[i]->e[j];
-        }
-    }
-    return c;
+	if(a->n_col != b->n_col || a->n_row != b->n_row){
+		printf("add a+b not aligned!\n");
+		return NULL;
+	}
+	mat* c = construct(a->n_row, a->n_col);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			c->col[i]->e[j] = a->col[i]->e[j] + b->col[i]->e[j];
+		}
+	}
+	return c;
 }
 
 
@@ -172,13 +184,13 @@ __device__ mat* add(const mat* a, const mat* b){
  * v+=w.
  */
 __device__ void addeq(vec* v, const vec* w){
-    if(v->n != w->n){
-        printf("addeq v+=w not aligned!\n");
-        return;
-    }
-    for(uint32_t i = 0; i < v->n; i++){
-        v->e[i] += w->e[i];
-    }
+	if(v->n != w->n){
+		printf("addeq v+=w not aligned!\n");
+		return;
+	}
+	for(uint32_t i = 0; i < v->n; i++){
+		v->e[i] += w->e[i];
+	}
 }
 
 
@@ -186,15 +198,15 @@ __device__ void addeq(vec* v, const vec* w){
  * a+=b.
  */
 __device__ void addeq(mat* a, const mat* b){
-    if(a->n_col != b->n_col || a->n_row != b->n_row){
-        printf("addeq a+=b not aligned!\n");
-        return;
-    }
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            a->col[i]->e[j] += b->col[i]->e[j];
-        }
-    }
+	if(a->n_col != b->n_col || a->n_row != b->n_row){
+		printf("addeq a+=b not aligned!\n");
+		return;
+	}
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			a->col[i]->e[j] += b->col[i]->e[j];
+		}
+	}
 }
 
 
@@ -202,11 +214,11 @@ __device__ void addeq(mat* a, const mat* b){
  * u = d*v.
  */
 __device__ vec* mul(const vec* v, const double d){
-    vec* u = construct(v->n);
-    for(uint32_t i = 0; i < v->n; i++){
-        u->e[i] = v->e[i] * d;
-    }
-    return u;
+	vec* u = construct(v->n);
+	for(uint32_t i = 0; i < v->n; i++){
+		u->e[i] = v->e[i] * d;
+	}
+	return u;
 }
 
 
@@ -214,13 +226,13 @@ __device__ vec* mul(const vec* v, const double d){
  * c = d*a.
  */
 __device__ mat* mul(const mat* a, const double d){
-    mat* c = construct(a->n_row, a->n_col);
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            c->col[i]->e[j] = a->col[i]->e[j] * d;
-        }
-    }
-    return c;
+	mat* c = construct(a->n_row, a->n_col);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			c->col[i]->e[j] = a->col[i]->e[j] * d;
+		}
+	}
+	return c;
 }
 
 
@@ -228,20 +240,20 @@ __device__ mat* mul(const mat* a, const double d){
  * u = a*v
  */
 __device__ vec* mul(const mat* a, const vec* v){
-    if(a->n_col != v->n){
-        printf("mul a*v not aligned!\n");
-        return NULL;
-    }
-    vec* u = construct(a->n_row);
-    for(uint32_t j = 0; j < a->n_row; j++){
-        u->e[j] = 0;
-    }
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            u->e[j] += a->col[i]->e[j] * v->e[i];
-        }
-    }
-    return u;
+	if(a->n_col != v->n){
+		printf("mul a*v not aligned!\n");
+		return NULL;
+	}
+	vec* u = construct(a->n_row);
+	for(uint32_t j = 0; j < a->n_row; j++){
+		u->e[j] = 0;
+	}
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			u->e[j] += a->col[i]->e[j] * v->e[i];
+		}
+	}
+	return u;
 }
 
 
@@ -249,18 +261,18 @@ __device__ vec* mul(const mat* a, const vec* v){
  * u = a'*v (= (v'*a)')
  */
 __device__ vec* mul(const vec* v, const mat* a){
-    if(a->n_row != v->n){
-        printf("mul a*v not aligned!\n");
-        return NULL;
-    }
-    vec* u = construct(a->n_col);
-    for(uint32_t i = 0; i < a->n_col; i++){
-        u->e[i] = 0;
-        for(uint32_t j = 0; j < a->n_row; j++){
-            u->e[i] += a->col[i]->e[j] * v->e[j];
-        }
-    }
-    return u;
+	if(a->n_row != v->n){
+		printf("mul a*v not aligned!\n");
+		return NULL;
+	}
+	vec* u = construct(a->n_col);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		u->e[i] = 0;
+		for(uint32_t j = 0; j < a->n_row; j++){
+			u->e[i] += a->col[i]->e[j] * v->e[j];
+		}
+	}
+	return u;
 }
 
 
@@ -268,13 +280,13 @@ __device__ vec* mul(const vec* v, const mat* a){
  * c = v*w'
  */
 __device__ mat* mul(const vec* v, const vec* w){
-    mat* c = construct(v->n, w->n);
-    for(uint32_t i = 0; i < c->n_col; i++){
-        for(uint32_t j = 0; j < c->n_row; j++){
-            c->col[i]->e[j]  = v->e[j] * w->e[i];
-        }
-    }
-    return c;
+	mat* c = construct(v->n, w->n);
+	for(uint32_t i = 0; i < c->n_col; i++){
+		for(uint32_t j = 0; j < c->n_row; j++){
+			c->col[i]->e[j]  = v->e[j] * w->e[i];
+		}
+	}
+	return c;
 }
 
 
@@ -282,9 +294,9 @@ __device__ mat* mul(const vec* v, const vec* w){
  * v *= d.
  */
 __device__ void muleq(vec* v, const double d){
-    for(uint32_t i = 0; i < v->n; i++){
-        v->e[i] *= d;
-    }
+	for(uint32_t i = 0; i < v->n; i++){
+		v->e[i] *= d;
+	}
 }
 
 
@@ -292,12 +304,12 @@ __device__ void muleq(vec* v, const double d){
  * a *= d.
  */
 __device__ void muleq(mat* a, const double d){
-    mat* c = construct(a->n_row, a->n_col);
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            a->col[i]->e[j] *= d;
-        }
-    }
+	mat* c = construct(a->n_row, a->n_col);
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			a->col[i]->e[j] *= d;
+		}
+	}
 }
 
 
@@ -305,11 +317,11 @@ __device__ void muleq(mat* a, const double d){
  * d = sum(v.*v).
  */
 __device__ double inner(const vec* v){
-    double d = 0;
-    for(uint32_t i = 0; i < v->n; i++){
-        d += v->e[i] * v->e[i];
-    }
-    return d;
+	double d = 0;
+	for(uint32_t i = 0; i < v->n; i++){
+		d += v->e[i] * v->e[i];
+	}
+	return d;
 }
 
 
@@ -317,15 +329,15 @@ __device__ double inner(const vec* v){
  * d = sum(v.*w).
  */
 __device__ double inner(const vec* v, const vec* w){
-    if(v->n != w->n){
-        printf("inner v and w not aligned!\n");
-        return 0.0/0;
-    }
-    double d = 0;
-    for(uint32_t i = 0; i < v->n; i++){
-        d += v->e[i] * w->e[i];
-    }
-    return d;
+	if(v->n != w->n){
+		printf("inner v and w not aligned!\n");
+		return 0.0/0;
+	}
+	double d = 0;
+	for(uint32_t i = 0; i < v->n; i++){
+		d += v->e[i] * w->e[i];
+	}
+	return d;
 }
 
 
@@ -333,13 +345,13 @@ __device__ double inner(const vec* v, const vec* w){
  * d = sum(sum(a.*a)).
  */
 __device__ double inner(const mat* a){
-    double d = 0;
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            d += a->col[i]->e[j] * a->col[i]->e[j];
-        }
-    }
-    return d;
+	double d = 0;
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			d += a->col[i]->e[j] * a->col[i]->e[j];
+		}
+	}
+	return d;
 }
 
 
@@ -347,17 +359,17 @@ __device__ double inner(const mat* a){
  * d = sum(sum(a.*b)).
  */
 __device__ double inner(const mat* a, const mat* b){
-    if(a->n_col != b->n_col || a->n_row != b->n_row){
-        printf("inner a and b not aligned!\n");
-        return 0.0/0;
-    }
-    double d = 0;
-    for(uint32_t i = 0; i < a->n_col; i++){
-        for(uint32_t j = 0; j < a->n_row; j++){
-            d += a->col[i]->e[j] * b->col[i]->e[j];
-        }
-    }
-    return d;
+	if(a->n_col != b->n_col || a->n_row != b->n_row){
+		printf("inner a and b not aligned!\n");
+		return 0.0/0;
+	}
+	double d = 0;
+	for(uint32_t i = 0; i < a->n_col; i++){
+		for(uint32_t j = 0; j < a->n_row; j++){
+			d += a->col[i]->e[j] * b->col[i]->e[j];
+		}
+	}
+	return d;
 }
 
 
@@ -365,12 +377,12 @@ __device__ double inner(const mat* a, const mat* b){
  * Add a new entry at the end.
  */
 __device__ void insert(vec* v, const double d){
-    v->n++;
-    double* temp = (double*)malloc(v->n * sizeof(double));
-    memcpy(temp, v->e, (v->n-1) * sizeof(double));
-    free(v->e);
-    v->e = temp;
-    v->e[v->n-1] = d;
+	v->n++;
+	double* temp = (double*)malloc(v->n * sizeof(double));
+	memcpy(temp, v->e, (v->n-1) * sizeof(double));
+	free(v->e);
+	v->e = temp;
+	v->e[v->n-1] = d;
 }
 
 
@@ -378,20 +390,20 @@ __device__ void insert(vec* v, const double d){
  * Add a new row at the end.
  */
 __device__ void insert_row(mat* a, const vec* v){
-    if(a->n_col != v->n){
-        printf("insert_row v to a not aligned!\n");
-        return;
-    }
-    a->n_row++;
-    double* temp;
-    for(uint32_t i = 0; i < a->n_col; i++){
-        a->col[i]->n++;
-        temp = (double*)malloc(a->n_row * sizeof(double));
-        memcpy(temp, a->col[i]->e, (a->n_row-1) * sizeof(double));
-        free(a->col[i]->e);
-        a->col[i]->e = temp;
-        a->col[i]->e[a->n_row-1] = v->e[i];
-    }
+	if(a->n_col != v->n){
+		printf("insert_row v to a not aligned!\n");
+		return;
+	}
+	a->n_row++;
+	double* temp;
+	for(uint32_t i = 0; i < a->n_col; i++){
+		a->col[i]->n++;
+		temp = (double*)malloc(a->n_row * sizeof(double));
+		memcpy(temp, a->col[i]->e, (a->n_row-1) * sizeof(double));
+		free(a->col[i]->e);
+		a->col[i]->e = temp;
+		a->col[i]->e[a->n_row-1] = v->e[i];
+	}
 }
 
 
@@ -399,16 +411,16 @@ __device__ void insert_row(mat* a, const vec* v){
  * Add a new column at the end.
  */
 __device__ void insert_col(mat* a, const vec* v){
-    if(a->n_row != v->n){
-        printf("insert_row v to a not aligned!\n");
-        return;
-    }
-    a->n_col++;
-    vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
-    memcpy(temp, a->col, (a->n_col-1) * sizeof(vec*));
-    free(a->col);
-    a->col = temp;
-    a->col[a->n_col-1] = copy(v);
+	if(a->n_row != v->n){
+		printf("insert_row v to a not aligned!\n");
+		return;
+	}
+	a->n_col++;
+	vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
+	memcpy(temp, a->col, (a->n_col-1) * sizeof(vec*));
+	free(a->col);
+	a->col = temp;
+	a->col[a->n_col-1] = copy(v);
 }
 
 
@@ -416,11 +428,11 @@ __device__ void insert_col(mat* a, const vec* v){
  * Remove the last entry.
  */
 __device__ void shed(vec* v){
-    v->n--;
-    double* temp = (double*)malloc(v->n * sizeof(double));
-    memcpy(temp, v->e, v->n * sizeof(double));
-    free(v->e);
-    v->e = temp;
+	v->n--;
+	double* temp = (double*)malloc(v->n * sizeof(double));
+	memcpy(temp, v->e, v->n * sizeof(double));
+	free(v->e);
+	v->e = temp;
 }
 
 
@@ -428,15 +440,15 @@ __device__ void shed(vec* v){
  * Remove the last row.
  */
 __device__ void shed_row(mat* a){
-    a->n_row--;
-    double* temp;
-    for(uint32_t i = 0; i < a->n_col; i++){
-        a->col[i]->n--;
-        temp = (double*)malloc(a->n_row * sizeof(double));
-        memcpy(temp, a->col[i]->e, a->n_row * sizeof(double));
-        free(a->col[i]->e);
-        a->col[i]->e = temp;
-    }
+	a->n_row--;
+	double* temp;
+	for(uint32_t i = 0; i < a->n_col; i++){
+		a->col[i]->n--;
+		temp = (double*)malloc(a->n_row * sizeof(double));
+		memcpy(temp, a->col[i]->e, a->n_row * sizeof(double));
+		free(a->col[i]->e);
+		a->col[i]->e = temp;
+	}
 }
 
 
@@ -444,12 +456,12 @@ __device__ void shed_row(mat* a){
  * Remove the last column.
  */
 __device__ void shed_col(mat* a){
-    free(a->col[a->n_col]);
-    a->n_col--;
-    vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
-    memcpy(temp, a->col, a->n_col * sizeof(vec*));
-    free(a->col);
-    a->col = temp;
+	a->n_col--;
+	free(a->col[a->n_col]);
+	vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
+	memcpy(temp, a->col, a->n_col * sizeof(vec*));
+	free(a->col);
+	a->col = temp;
 }
 
 
@@ -457,10 +469,10 @@ __device__ void shed_col(mat* a){
  * Swap two entries.
  */
 __device__ void swap(vec* v, const uint32_t i, const uint32_t j){
-    double temp;
-    temp = v->e[i];
-    v->e[i] = v->e[j];
-    v->e[j] = temp;
+	double temp;
+	temp = v->e[i];
+	v->e[i] = v->e[j];
+	v->e[j] = temp;
 }
 
 
@@ -468,12 +480,12 @@ __device__ void swap(vec* v, const uint32_t i, const uint32_t j){
  * Swap two rows.
  */
 __device__ void swap_row(mat* a, const uint32_t i, const uint32_t j){
-    double temp;
-    for(uint32_t k = 0; k < a->n_col; k++){
-        temp = a->col[k]->e[i];
-        a->col[k]->e[i] = a->col[k]->e[j];
-        a->col[k]->e[j] = temp;
-    }
+	double temp;
+	for(uint32_t k = 0; k < a->n_col; k++){
+		temp = a->col[k]->e[i];
+		a->col[k]->e[i] = a->col[k]->e[j];
+		a->col[k]->e[j] = temp;
+	}
 }
 
 
@@ -481,8 +493,8 @@ __device__ void swap_row(mat* a, const uint32_t i, const uint32_t j){
  * Swap two columns.
  */
 __device__ void swap_col(mat* a, const uint32_t i, const uint32_t j){
-    vec* temp;
-    temp = a->col[i];
-    a->col[i] = a->col[j];
-    a->col[j] = temp;
+	vec* temp;
+	temp = a->col[i];
+	a->col[i] = a->col[j];
+	a->col[j] = temp;
 }
