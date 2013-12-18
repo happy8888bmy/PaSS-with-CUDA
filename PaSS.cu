@@ -69,7 +69,7 @@ __device__ u32 n, p;
 __device__ mat* X;
 __device__ vec* Y;
 __device__ Criterion cri = HDBIC;
-__device__ Parameter par = {32, 128, .8, .1, .1, .9, .1};
+__device__ Parameter par = {10, 128, .8, .1, .1, .9, .1};
 __device__ Data data_best;
 __device__ curandState s;
 
@@ -239,8 +239,6 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 
 	// Set Random Initial
 	bool isRandInitial = false;
-
-	u32 index;
 
 	// Initialize Particles
 	Data* data = new Data[par.nP];
