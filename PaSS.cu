@@ -36,13 +36,13 @@ enum Criterion {
  * The parameter structure
  */
 struct Parameter {
-	u32 nP; // the number of particle
-	u32 nI; // the number of iteration
-	float pfg;   // the probability for forward step: global
-	float pfl;   // the probability for forward step: local
-	float pfr;   // the probability for forward step: random
-	float pbl;   // the probability for backward step: local
-	float pbr;   // the probability for backward step: random
+	u32 nP;    // the number of particle
+	u32 nI;    // the number of iteration
+	float pfg; // the probability for forward step: global
+	float pfl; // the probability for forward step: local
+	float pfr; // the probability for forward step: random
+	float pbl; // the probability for backward step: local
+	float pbr; // the probability for backward step: random
 };
 
 
