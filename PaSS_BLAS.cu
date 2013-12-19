@@ -11,13 +11,13 @@
 
 #include "curand_kernel.h"
 #include "device_functions.h"
+#include "float.h"
 #include "math_constants.h"
 #include "math_functions.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h>
 
 typedef uint32_t u32;
 
@@ -161,7 +161,7 @@ namespace pass {
 
 
 	/**
-	 * u = v
+	 * Copy a vector.
 	 *
 	 * @param u the new vector.
 	 * @param v the original vector.
@@ -178,10 +178,10 @@ namespace pass {
 
 
 	/**
-	 * c = a
+	 * Copy a matrix.
 	 *
-	 * @param u the new vector.
-	 * @param v the original vector.
+	 * @param c the new matrix.
+	 * @param a the original matrix.
 	 * @return whether this function has been excuted successfully.
 	 */
 	__host__ __device__ bool copy(mat* c, const mat* a) {
@@ -192,6 +192,23 @@ namespace pass {
 		for(u32 i = 0; i < a->n_col; i++) {
 			memcpy(c->col[i], a->col[i], a->n_row * sizeof(float));
 		}
+		return true;
+	}
+
+
+	/**
+	 * Copy a index.
+	 *
+	 * @param x the new index.
+	 * @param z the original index.
+	 * @return whether this function has been excuted successfully.
+	 */
+	__host__ __device__ bool copy(idx* z, const idx* x) {
+		if(z->n != x->n) {
+			printf("(copy: index) not aligned!\n");
+			return false;
+		}
+		memcpy(z->e, x->e, x->n * sizeof(u32));
 		return true;
 	}
 
@@ -373,7 +390,7 @@ namespace pass {
 	__host__ __device__ bool mul(mat* c, const vec* v, const vec* w) {
 		for(u32 i = 0; i < c->n_col; i++) {
 			for(u32 j = 0; j < c->n_row; j++) {
-				c->col[i]->e[j]  = v->e[j] * w->e[i];
+				c->col[i]->e[j] = v->e[j] * w->e[i];
 			}
 		}
 		return true;
@@ -424,11 +441,15 @@ namespace pass {
 	 * @param d the product number.
 	 * @return whether this function has been excuted successfully.
 	 */
-	__host__ __device__ bool inner(float* d, const mat* a) {
-		*d = 0;
+	__host__ __device__ bool inner(vec* u, const mat* a) {
+		if(u->n != a->n_col) {
+			printf("(inner: matrix) not aligned!\n");
+			return false;
+		}
 		for(u32 i = 0; i < a->n_col; i++) {
+			u->e[i] = 0;
 			for(u32 j = 0; j < a->n_row; j++) {
-				*d += a->col[i]->e[j] * a->col[i]->e[j];
+				u->e[i] += a->col[i]->e[j] * a->col[i]->e[j];
 			}
 		}
 		return true;
@@ -592,7 +613,16 @@ namespace pass {
 	 * @return whether this function has been excuted successfully.
 	 */
 	__host__ __device__ bool shed(vec* v) {
+		if(v->n == 0) {
+			printf("(shed: vector) empty!\n");
+			return false;
+		}
 		v->n--;
+		if(v->n == 0) {
+			free(v->e);
+			v->e = 0;
+			return true;
+		}
 		float* temp = (float*)malloc(v->n * sizeof(float));
 		memcpy(temp, v->e, v->n * sizeof(float));
 		free(v->e);
@@ -608,7 +638,45 @@ namespace pass {
 	 * @return whether this function has been excuted successfully.
 	 */
 	__host__ __device__ bool shed(idx* x) {
+		if(x->n == 0) {
+			printf("(shed: index) empty!\n");
+			return false;
+		}
 		x->n--;
+		if(x->n == 0) {
+			free(x->e);
+			x->e = 0;
+			return true;
+		}
+		u32* temp = (u32*)malloc(x->n * sizeof(u32));
+		memcpy(temp, x->e, x->n * sizeof(u32));
+		free(x->e);
+		x->e = temp;
+		return true;
+	}
+
+
+	/**
+	 * Remove the last n entries.
+	 *
+	 * @param x the index.
+	 * @param n number of entries.
+	 * @return whether this function has been excuted successfully.
+	 */
+	__host__ __device__ bool shed(idx* x, const u32 n) {
+		if(n == 0) {
+			return true;
+		}
+		if(x->n < n) {
+			printf("(shed: index) n too large!\n");
+			return false;
+		}
+		x->n -= n;
+		if(x->n == 0) {
+			free(x->e);
+			x->e = 0;
+			return true;
+		}
 		u32* temp = (u32*)malloc(x->n * sizeof(u32));
 		memcpy(temp, x->e, x->n * sizeof(u32));
 		free(x->e);
@@ -624,7 +692,19 @@ namespace pass {
 	 * @return whether this function has been excuted successfully.
 	 */
 	__host__ __device__ bool shed_row(mat* a) {
+		if(a->n_row == 0) {
+			printf("(shed_row) empty!\n");
+			return false;
+		}
 		a->n_row--;
+		if(a->n_row == 0) {
+			for(u32 i = 0; i < a->n_col; i++) {
+				a->col[i]->n = 0;
+				free(a->col[i]->e);
+				a->col[i]->e = 0;
+			}
+			return true;
+		}
 		float* temp;
 		for(u32 i = 0; i < a->n_col; i++) {
 			a->col[i]->n--;
@@ -644,8 +724,17 @@ namespace pass {
 	 * @return whether this function has been excuted successfully.
 	 */
 	__host__ __device__ bool shed_col(mat* a) {
+		if(a->n_col == 0) {
+			printf("(shed_col) empty!\n");
+			return false;
+		}
 		a->n_col--;
 		free(a->col[a->n_col]);
+		if(a->n_col == 0) {
+			free(a->col);
+			a->col = 0;
+			return true;
+		}
 		vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
 		memcpy(temp, a->col, a->n_col * sizeof(vec*));
 		free(a->col);
@@ -674,7 +763,7 @@ namespace pass {
 	/**
 	 * Swap two entries.
 	 *
-	 * @param X the index.
+	 * @param x the index.
 	 * @param i the index of first entry.
 	 * @param j the index of second entry.
 	 * @return whether this function has been excuted successfully.
@@ -732,15 +821,34 @@ namespace pass {
 	 * @param d the element.
 	 * @return whether this function has been excuted successfully.
 	 */
-	__host__ __device__ bool find_index(u32* k, const idx* v, const u32 i) {
-		for(u32 j = 0; j < v->n; j++) {
-			if(v->e[j] == i) {
+	__host__ __device__ bool find_index(u32* k, const idx* x, const u32 i) {
+		for(u32 j = 0; j < x->n; j++) {
+			if(x->e[j] == i) {
 				*k = j;
 				return true;
 			}
 		}
 		*k = UINT32_MAX;
+		printf("(find_index) index not found!\n");
 		return false;
+	}
+
+
+	/**
+	 * Find the index of minimal element
+	 *
+	 * @param k the index.
+	 * @param v the vector.
+	 * @return whether this function has been excuted successfully.
+	 */
+	__host__ __device__ bool find_min_index(u32* k, const vec* v) {
+		float d = _FPCLASS_PINF;
+		for(u32 j = 0; j < v->n; j++) {
+			if(v->e[j] < d) {
+				*k = j;
+			}
+		}
+		return true;
 	}
 
 
@@ -789,17 +897,17 @@ namespace pass {
 	/**
 	 * Sort index of a vector in ascending order
 	 *
-	 * @param x the sorted index.
+	 * @param z the sorted index.
 	 * @param v the vector.
 	 * @return whether this function has been excuted successfully.
 	 */
-	__host__ __device__ bool sort_index_ascend(idx* x, const vec* v) {
-		if(x->n != v->n) {
+	__host__ __device__ bool sort_index_ascend(idx* z, const vec* v) {
+		if(z->n != v->n) {
 			printf("(sort_index) not aligned!\n");
 			return false;
 		}
 		for(u32 i = 0; i < v->n; i++) {
-			x->e[i] = i;
+			z->e[i] = i;
 		}
 		if(v->n < 2) {
 			return true;
@@ -814,9 +922,9 @@ namespace pass {
 					utemp = u->e[j];
 					u->e[j] =u->e[j+1];
 					u->e[j+1] = utemp;
-					xtemp = x->e[j];
-					x->e[j] = x->e[j+1];
-					x->e[j+1] = xtemp;
+					xtemp = z->e[j];
+					z->e[j] = z->e[j+1];
+					z->e[j+1] = xtemp;
 				}
 			}
 		}
@@ -828,17 +936,17 @@ namespace pass {
 	/**
 	 * Sort index of a vector in descending order
 	 *
-	 * @param x the sorted index.
+	 * @param z the sorted index.
 	 * @param v the vector.
 	 * @return whether this function has been excuted successfully.
 	 */
-	__host__ __device__ bool sort_index_descend(idx* x, const vec* v) {
-		if(x->n != v->n) {
+	__host__ __device__ bool sort_index_descend(idx* z, const vec* v) {
+		if(z->n != v->n) {
 			printf("(sort_index_descend) not aligned!\n");
 			return false;
 		}
 		for(u32 i = 0; i < v->n; i++) {
-			x->e[i] = i;
+			z->e[i] = i;
 		}
 		if(v->n < 2) {
 			return true;
@@ -853,9 +961,9 @@ namespace pass {
 					utemp = u->e[j];
 					u->e[j] =u->e[j+1];
 					u->e[j+1] = utemp;
-					xtemp = x->e[j];
-					x->e[j] = x->e[j+1];
-					x->e[j+1] = xtemp;
+					xtemp = z->e[j];
+					z->e[j] = z->e[j+1];
+					z->e[j+1] = xtemp;
 				}
 			}
 		}
@@ -865,19 +973,60 @@ namespace pass {
 
 
 	/**
-	 * Transform a vector to a diagonal matrix
+	 * Set complement of a sorted index
 	 *
-	 * @param c the matrix.
-	 * @param v the vector.
+	 * @param z the complement set index.
+	 * @param x the origin set index.
+	 * @param n the length of universe.
 	 * @return whether this function has been excuted successfully.
 	 */
-	__host__ __device__ bool diag(mat* c, const vec* v) {
-		if(c->n_col != v->n || c->n_row != v->n) {
-			printf("(sort_index_descend) not aligned!\n");
+	__host__ __device__ bool complement(idx* z, const idx* x, const u32 n) {
+		if(z->n + x->n != n) {
+			printf("(set_diff) not aligned!\n");
 			return false;
 		}
-		for(u32 i = 0; i < v->n; i++) {
-			c->col[i]->e[i] = v->e[i];
+		u32 i, j, d;
+		for(i = 0, j = 0, d = 0; j < z->n; d++) {
+			if(i < x->n && d == x->e[i]) {
+				i++;
+			}
+			else {
+				z->e[j] = d;
+				j++;
+			}
+		}
+		return true;
+	}
+
+
+	/**
+	 * Set difference of two sorted index
+	 *
+	 * @param z the difference set index.
+	 * @param x the minuend set index.
+	 * @param y the subtrahend set index.
+	 * @return whether this function has been excuted successfully.
+	 */
+	__host__ __device__ bool set_difference(idx* z, const idx* x, const idx* y) {
+		if(z->n != x->n) {
+			printf("(set_diff) not aligned!\n");
+			return false;
+		}
+		u32 i, j, k;
+		for(i = 0, j = 0, k = 0; i < x->n && j < y->n;) {
+			if(x->e[i] < y->e[j]) {
+				z->e[k] = x->e[i] ;
+				i++;
+				k++;
+			}else if(x->e[i] == y->e[j]) {
+				i++;
+				j++;
+			}else {
+				j++;
+			}
+		}
+		while(k != z->n) {
+			shed(z, z->n - k);
 		}
 		return true;
 	}
