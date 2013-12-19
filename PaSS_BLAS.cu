@@ -982,7 +982,7 @@ namespace pass {
 	 */
 	__host__ __device__ bool complement(idx* z, const idx* x, const u32 n) {
 		if(z->n + x->n != n) {
-			printf("(set_diff) not aligned!\n");
+			printf("(complement) not aligned!\n");
 			return false;
 		}
 		u32 i, j, d;
@@ -1009,7 +1009,7 @@ namespace pass {
 	 */
 	__host__ __device__ bool set_difference(idx* z, const idx* x, const idx* y) {
 		if(z->n != x->n) {
-			printf("(set_diff) not aligned!\n");
+			printf("(set_difference) not aligned!\n");
 			return false;
 		}
 		u32 i, j, k;
