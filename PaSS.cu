@@ -69,8 +69,8 @@ __device__ u32 n, p;
 __device__ mat* X;
 __device__ vec* Y;
 __device__ Criterion cri = HDBIC;
-__device__ Parameter par = {10, 128, .8, .1, .1, .9, .1};
-__device__ Data data_best;
+__device__ Parameter par = {16, 128, .8, .1, .1, .9, .1};
+__device__ Data* data_best;
 __device__ curandState s;
 
 
@@ -126,9 +126,9 @@ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u32 host_p)
 	u32 i, j;
 	for(i = 0; i < host_n; i++) {
 		for(j = 0; j < host_p; j++) {
-			host_X[i*host_p + j] = (i+1)*(2*j+1);
+			host_X[i*host_p + j] = (float)(i+1)*(2*j+1);
 		}
-		host_Y[i] = 10*i;
+		host_Y[i] = (float)10*i;
 	}
 }
 
@@ -194,7 +194,7 @@ cudaError_t pass_host(const float* host_X, const float* host_Y, u32* host_I, con
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching testKernel!\n", cudaStatus);
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
 		goto Error;
 	}
 
@@ -240,6 +240,7 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	// Set Random Initial
 	bool isRandInitial = false;
 
+
 	// Initialize Particles
 	Data* data = new Data[par.nP];
 	mat* Phi = new mat(par.nI+1, par.nP);
@@ -258,7 +259,7 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 			mul(C, Y, X);
 			sort_index_descend(I, C);
 			data[j].stat = 0;
-			pass_update_cri(&(data[j]), I->e[j]);
+			pass_update_cri(&data[j], I->e[j]);
 			Phi->col[j]->e[0] = data[j].phi;
 			data[j].stat = 1;
 		}
@@ -267,15 +268,15 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	}
 	
 	// Choose Global Best
-	data_best = data[0];
+	data_best = &data[0];
 
 	// Find Best Data
 	for(i = 0; i < par.nI; i++) {
 		for(j = 0; j < par.nP; j++) {
-			pass_update_fb(&(data[j]));
+			pass_update_fb(&data[j]);
 			Phi->col[j]->e[i+1] = data[j].phi;
-			if(data_best.phi > data[j].phi) {
-				data_best = data[j];
+			if(data_best->phi > data[j].phi) {
+				data_best = &data[j];
 			}
 			if(data[j].phi - Phi->col[j]->e[i] > 0) {
 				data[j].stat = -data[j].stat;
@@ -305,71 +306,38 @@ __device__ bool pass_update_fb(Data* data) {
 	switch(data->stat) {
 	case 1: // Forward
 		{
-			idx* Index_B = new idx(data_best.Index->n);
+			idx* Index_B = new idx(data_best->Index->n);
 			idx* Index_C = new idx(data->Index->n);
-			
-			// Determined the length of Index_B, C and initialize the length of Index_D
-			u32 length_D_max = Index_B->n + Index_C->n;
-			u32 length_D = 0;
-			
-			// Let Index_D be Index_B Exclude Index_C
-			memcpy(Index_B->e, data_best.Index, (sizeof(u32)) * Index_B->n);
-			if(~sort_ascend(Index_B)) return false;
-			
-			memcpy(Index_C->e, data->Index, (sizeof(u32)) * Index_C->n);
-			if(~sort_ascend(Index_C)) return false;
-			
-			u32* Index_D_temp = (u32*)malloc(sizeof(u32) * length_D_max);
-
-			u32 i = 0, j = 0;
-			while(i < Index_B->n){
-				if(Index_B->e[i] < Index_C->e[j] || j == Index_C->n - 1){
-					Index_D_temp[length_D] = Index_B->e[i];
-					length_D = length_D + 1;
-					i++;
-				}
-				else if(Index_B->e[i] == Index_C->e[j]){
-					i++;
-					j++;
-				}
-				else{
-					j++;
-				}
-			}
-
-			idx* Index_D = new idx(length_D);
-			memcpy(Index_D->e, Index_D_temp, (sizeof(u32)) * Index_D->n);
-
-			// Let Index_R be the Complement of Index_C
+			idx* Index_D = new idx(Index_B->n);
 			idx* Index_R = new idx(p - Index_C->n);
-			u32 num = 0;
 
-			for(i = 0, j = 0; i < Index_R->n; num++){
-				if(j < Index_C->n && num == Index_C->e[j]){
-					j++;
-				}
-				else{
-					Index_R->e[i] = num;
-					i++;
-				}
-			}
+			// Sort Index_B
+			copy(Index_B, data_best->Index);
+			sort_ascend(Index_B);
+			
+			// Sort Index_C
+			copy(Index_C, data->Index);
+			sort_ascend(Index_C);
+			
+			// Let Index_D be Index_B exclude Index_C
+			set_difference(Index_D, Index_B, Index_C);
+			
+			// Let Index_R be the complement of Index_C
+			complement(Index_R, Index_C, p);
 
 			// Determine the index to add
-			float randnum = curand_uniform(&s);
-
-			if((float)randnum < par.pfg && length_D > 0){
+			if(curand_uniform(&s) < par.pfg && Index_D->n > 0){
 				index = Index_D->e[curand(&s) % Index_D->n];
 			}
-			else if(randnum < par.pfl + par.pfg){
-				float phi_max  = 0, phi_temp = 0;
-				if(~inner(&phi_max, data->R, X->col[Index_R->e[0]])) return false;
-				for(i = 0; i < Index_R->n; i++){
-					if(~inner(&phi_temp, data->R, X->col[Index_R->e[i]])) return false;
-					if(phi_temp > phi_max){
+			else if(curand_uniform(&s) < par.pfl/(par.pfl+par.pfr)){
+				float phi_max = -1, phi_temp;
+				for(u32 i = 0; i < Index_R->n; i++) {
+					inner(&phi_temp, data->R, X->col[i]);
+					phi_temp = abs(phi_temp);
+					if(phi_temp > phi_max) {
 						phi_max = phi_temp;
 						index = Index_R->e[i];
 					}
-
 				}
 			}
 			else{
@@ -380,50 +348,25 @@ __device__ bool pass_update_fb(Data* data) {
 			delete Index_C;
 			delete Index_D;
 			delete Index_R;
-
 			break;
 		}
 	case -1: // Backward
 		{
-			float randnum = curand_uniform(&s);
-
-			if(randnum < par.pbl){
-				mat* temp1 = new mat(n, p);
-				// temp1 = (*data).X * diagmat((*data).Beta)
-				for(int i = 0; i < temp1->n_col; i++){
-						if(~mul(temp1->col[i], data->X->col[i], data->Beta->e[i]))return false;
+			// Determine the index to remove
+			if(curand_uniform(&s)< par.pbl){
+				mat* B = new mat(data->X->n_row, data->X->n_col);
+				vec* C = new vec(data->X->n_col);
+				u32 ii;
+				for(u32 i = 0; i < B->n_col; i++){
+					mul(B->col[i], data->X->col[i], data->Beta->e[i]);
+					add(B->col[i], B->col[i], data->R);
 				}
-
-				mat* temp2 = new mat(n, p);
-				// temp2 = (*data).R * ones<rowvec>((*data).Index.n_rows)
-				for(int i = 0; i < temp2->n_col; i++){
-					if(~mul(temp2->col[i], data->R, 1))return false;
-				}
-
-				mat* bb = new mat(n, p);
-				if(~add(bb, temp1, temp2))return false;
+				inner(C, B);
+				find_min_index(&ii, C);
+				index = data->Index->e[ii];
 				
-				delete temp1;
-				delete temp2;
-
-				// Find arcmin of rowvec bbbb = sum(bb%bb)
-				float min_temp, temp;
-				if(~norm(&min_temp, bb->col[0]))return false;
-				u32 cc = 0;
-
-				for(int i = 0; i < bb->n_col; i++){
-					if(~norm(&temp, bb->col[i]))return false;
-					if(temp > min_temp){
-						min_temp = temp;
-						cc = i;
-					}
-				}
-				
-				delete bb;
-
-				index = data->Index->e[cc];
-				
-				
+				delete B;
+				delete C;
 			}
 			else{
 				index = data->Index->e[curand(&s) % data->Index->n];
@@ -473,25 +416,26 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		break;
 	case 1: // Forward
 		{
-
 			k = (*data).Index->n;
 			vec* B = new vec(k);
-			mul(B, Xnew, (*data).X);
-
 			vec* D = new vec(k);
-			mul(D, (*data).InvA, B);
-			
+			mat* InvAtemp = new mat(k+1, k+1);
+			float alpha;
 			float c1;
 			float c2;
+
+			mul(B, Xnew, (*data).X);
+
+			mul(D, (*data).InvA, B);
+			
 			inner(&c1, Xnew);
 			inner(&c2, B, D);
-			float alpha = 1/(c1 - c2);
+			alpha = 1/(c1 - c2);
 
 			insert(D, -1);
 
 			insert_col((*data).X, Xnew);
 
-			mat* InvAtemp = new mat(k+1, k+1);
 			mul(InvAtemp, D, D);
 			mul(InvAtemp, InvAtemp, alpha);
 			insert((*data).InvA, 0);
@@ -517,6 +461,10 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		{
 			k = (*data).Index->n - 1;
 			u32 ii;
+			mat* E = new mat(k, k);
+			vec* F = new vec(k);
+			float g;
+
 			find_index(&ii, (*data).Index, index);
 			if(ii != k) {
 				swap_col((*data).X, ii, k);
@@ -531,14 +479,12 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			shed((*data).Theta);
 			shed((*data).Index);
 
-			float g = (*data).InvA->col[k]->e[k];
+			g = (*data).InvA->col[k]->e[k];
 
-			vec* F = new vec(k);
 			shed_row((*data).InvA);
 			copy(F, (*data).InvA->col[k]);
 			shed_col((*data).InvA);
 
-			mat* E = new mat(k, k);
 			mul(E, F, F);
 			mul(E, E, 1/g);
 			sub((*data).InvA, (*data).InvA, E);
