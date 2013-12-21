@@ -364,7 +364,6 @@ __device__ bool pass_update_fb(Data* data) {
 				inner(C, B);
 				find_min_index(&ii, C);
 				index = data->Index->e[ii];
-				
 				delete B;
 				delete C;
 			}
