@@ -24,11 +24,11 @@ typedef int Stat;
  * The criterion enumeration
  */
 enum Criterion {
-	AIC,
-	BIC,
-	EBIC,
-	HDBIC,
-	HDHQ
+	AIC,   /**< Akaike information criterion */
+	BIC,   /**< Bayesian information criterion */
+	EBIC,  /**< EBIC */
+	HDBIC, /**< HDBIC */
+	HDHQ   /**< HDHQ */
 };
 
 
@@ -36,13 +36,13 @@ enum Criterion {
  * The parameter structure
  */
 struct Parameter {
-	u32 nP;    // the number of particle
-	u32 nI;    // the number of iteration
-	float pfg; // the probability for forward step: global
-	float pfl; // the probability for forward step: local
-	float pfr; // the probability for forward step: random
-	float pbl; // the probability for backward step: local
-	float pbr; // the probability for backward step: random
+	u32 nP;    /**< the number of particle */
+	u32 nI;    /**< the number of iteration */
+	float pfg; /**< the probability for forward step: global */
+	float pfl; /**< the probability for forward step: local */
+	float pfr; /**< the probability for forward step: random */
+	float pbl; /**< the probability for backward step: local */
+	float pbr; /**< the probability for backward step: random */
 };
 
 
@@ -50,21 +50,19 @@ struct Parameter {
  * The data structure
  */
 struct Data {
-	vec* Beta;
-	float e;
-	idx* Index; // the index of chosen column of X
-	mat* InvA;
-	float phi;  // the value given by criterion
-	vec* R;
-	Stat stat;  // the status
-	vec* Theta;
-	mat* X;     // the data we chosen
+	vec* Beta;  /**< the vector beta */
+	float e;    /**< the norm of R */
+	idx* Index; /**< the index of chosen column of X */
+	mat* InvA;  /**< the inverse of A */
+	float phi;  /**< the value given by criterion */
+	vec* R;     /**< the difference between Y and Beta */
+	Stat stat;  /**< the status */
+	vec* Theta; /**< the vector theta */
+	mat* X;     /**< the data we chosen */
 };
 
 
-/**
- * Global variables
- */
+// Global variables
 __device__ u32 n, p;
 __device__ mat* X;
 __device__ vec* Y;
@@ -73,8 +71,7 @@ __device__ Parameter par = {16, 128, .8, .1, .1, .9, .1};
 __device__ Data* data_best;
 __device__ curandState s;
 
-
-
+// Functions
 void pass_init(float*, float*, const u32, const u32);
 cudaError_t pass_host(const float*, const float*, u32*, const u32, const u32);
 __global__ void pass_kernel(const float*, const float*, u32*, const u32, const u32);
@@ -96,7 +93,7 @@ int main() {
 	// Initialize data
 	pass_init(host_X, host_Y, host_n, host_p);
 
-	//// Display data
+	// Display data
 	//u32 i, j;
 	//printf("X:\n");
 	//for(i = 0; i < host_n; i++) {
@@ -121,6 +118,11 @@ int main() {
 
 /**
  * Initialize data
+ *
+ * @param host_X the matrix X
+ * @param host_Y the vector Y
+ * @param host_n the number of rows in X
+ * @param host_p the number of columns in X
  */
 void pass_init(float* host_X, float* host_Y, const u32 host_n, const u32 host_p) {
 	u32 i, j;
@@ -135,6 +137,11 @@ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u32 host_p)
 
 /**
  * PaSS host function
+ *
+ * @param host_X the matrix X
+ * @param host_Y the vector Y
+ * @param host_n the number of rows in X
+ * @param host_p the number of columns in X
  */
 cudaError_t pass_host(const float* host_X, const float* host_Y, u32* host_I, const u32 host_n, const u32 host_p) {
 	// Declare variables
@@ -215,6 +222,11 @@ Error:
 
 /**
  * PaSS kernel function
+ *
+ * @param array_X the matrix X
+ * @param array_Y the vector Y
+ * @param host_n the number of rows in X
+ * @param host_p the number of columns in X
  */
 __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* array_I, const u32 host_n, const u32 host_p) {
 	// Initialize Random Seed
@@ -297,8 +309,6 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 
 /**
  * Determine forward or backward
- *
- * @param data the updating data
  */
 __device__ bool pass_update_fb(Data* data) {
 	u32 index = 0;
@@ -388,34 +398,34 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	float gamma = 1;
 	u32 k = 0;
 	vec* Xnew = X->col[index];
-	switch((*data).stat) {
+	switch(data->stat) {
 	case 0: // Initial
 		{
-			(*data).X = new mat(n, 1);
-			copy((*data).X->col[0], Xnew);
+			data->X = new mat(n, 1);
+			copy(data->X->col[0], Xnew);
 
-			(*data).InvA = new mat(1, 1);
+			data->InvA = new mat(1, 1);
 			float a;
 			inner(&a, Xnew);
-			(*data).InvA->col[0]->e[0] = 1 / a;
+			data->InvA->col[0]->e[0] = 1 / a;
 
-			(*data).Theta = new vec(1);
-			inner((*data).Theta->e, Xnew, Y);
+			data->Theta = new vec(1);
+			inner(data->Theta->e, Xnew, Y);
 
-			(*data).Beta = new vec(1);
-			mul((*data).Beta, (*data).InvA, (*data).Theta);
+			data->Beta = new vec(1);
+			mul(data->Beta, data->InvA, data->Theta);
 
-			(*data).Index = new idx(1);
-			(*data).Index ->e[0] = index;
+			data->Index = new idx(1);
+			data->Index->e[0] = index;
 
-			(*data).R = new vec(n);
+			data->R = new vec(n);
 
 			k = 1;
 		}
 		break;
 	case 1: // Forward
 		{
-			k = (*data).Index->n;
+			k = data->Index->n;
 			vec* B = new vec(k);
 			vec* D = new vec(k);
 			mat* InvAtemp = new mat(k+1, k+1);
@@ -423,9 +433,9 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			float c1;
 			float c2;
 
-			mul(B, Xnew, (*data).X);
+			mul(B, Xnew, data->X);
 
-			mul(D, (*data).InvA, B);
+			mul(D, data->InvA, B);
 			
 			inner(&c1, Xnew);
 			inner(&c2, B, D);
@@ -433,22 +443,22 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 
 			insert(D, -1);
 
-			insert_col((*data).X, Xnew);
+			insert_col(data->X, Xnew);
 
 			mul(InvAtemp, D, D);
 			mul(InvAtemp, InvAtemp, alpha);
-			insert((*data).InvA, 0);
-			add((*data).InvA, (*data).InvA, InvAtemp);
+			insert(data->InvA, 0);
+			add(data->InvA, data->InvA, InvAtemp);
 			
 			inner(&c1, Xnew, Y);
-			insert((*data).Theta, c1);
+			insert(data->Theta, c1);
 			
-			inner(&c2, D, (*data).Theta);
+			inner(&c2, D, data->Theta);
 			mul(D, D, alpha*c2);
-			insert((*data).Beta, 1);
-			add((*data).Beta, (*data).Beta, D);
+			insert(data->Beta, 1);
+			add(data->Beta, data->Beta, D);
 
-			insert((*data).Index, index);
+			insert(data->Index, index);
 			
 			delete B;
 			delete D;
@@ -458,40 +468,40 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		break;
 	case -1: // Backward
 		{
-			k = (*data).Index->n - 1;
+			k = data->Index->n - 1;
 			u32 ii;
 			mat* E = new mat(k, k);
 			vec* F = new vec(k);
 			float g;
 
-			find_index(&ii, (*data).Index, index);
+			find_index(&ii, data->Index, index);
 			if(ii != k) {
-				swap_col((*data).X, ii, k);
-				swap((*data).Theta, ii, k);
-				swap((*data).Beta, ii, k);
-				swap_row((*data).InvA, ii, k);
-				swap_col((*data).InvA, ii, k);
-				swap((*data).Index, ii, k);
+				swap_col(data->X, ii, k);
+				swap(data->Theta, ii, k);
+				swap(data->Beta, ii, k);
+				swap_row(data->InvA, ii, k);
+				swap_col(data->InvA, ii, k);
+				swap(data->Index, ii, k);
 			}
 
-			shed_col((*data).X);
-			shed((*data).Theta);
-			shed((*data).Index);
+			shed_col(data->X);
+			shed(data->Theta);
+			shed(data->Index);
 
-			g = (*data).InvA->col[k]->e[k];
+			g = data->InvA->col[k]->e[k];
 
-			shed_row((*data).InvA);
-			copy(F, (*data).InvA->col[k]);
-			shed_col((*data).InvA);
+			shed_row(data->InvA);
+			copy(F, data->InvA->col[k]);
+			shed_col(data->InvA);
 
 			mul(E, F, F);
 			mul(E, E, 1/g);
-			sub((*data).InvA, (*data).InvA, E);
+			sub(data->InvA, data->InvA, E);
 
 			
-			mul(F, F, (*data).Beta->e[k] / g);
-			shed((*data).Beta);
-			add((*data).Beta, (*data).Beta, F);
+			mul(F, F, data->Beta->e[k] / g);
+			shed(data->Beta);
+			add(data->Beta, data->Beta, F);
 
 			delete E;
 			delete F;
@@ -499,26 +509,26 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		break;
 	}
 
-	mul((*data).R, (*data).X,  (*data).Beta);
-	sub((*data).R, Y, (*data).R);
+	mul(data->R, data->X,  data->Beta);
+	sub(data->R, Y, data->R);
 
-	norm(&(*data).e, (*data).R);
+	norm(&data->e, data->R);
 
 	switch(cri) {
 	case AIC:
-		(*data).phi = n * log((*data).e * (*data).e / n) + 2 * k;
+		data->phi = n * log(data->e * data->e / n) + 2 * k;
 		break;
 	case BIC:
-		(*data).phi = n * log((*data).e * (*data).e / n) + log((float)n) * k;
+		data->phi = n * log(data->e * data->e / n) + log((float)n) * k;
 		break;
 	case EBIC:
-		(*data).phi = n * log((*data).e * (*data).e / n) + log((float)n) * k + 2 * gamma * ((p+.5) * log((float)p) - (k+.5) * log((float)k) - (p-k+.5) * log((float)(p-k)) - .5 * log(2 * CUDART_PI_F));
+		data->phi = n * log(data->e * data->e / n) + log((float)n) * k + 2 * gamma * ((p+.5) * log((float)p) - (k+.5) * log((float)k) - (p-k+.5) * log((float)(p-k)) - .5 * log(2 * CUDART_PI_F));
 		break;
 	case HDBIC:
-		(*data).phi = n * log((*data).e * (*data).e / n) + log((float)n) * log((float)p) * k;
+		data->phi = n * log(data->e * data->e / n) + log((float)n) * log((float)p) * k;
 		break;
 	case HDHQ:
-		(*data).phi = n * log((*data).e * (*data).e / n) + 2.01 * log(log((float)n)) * log((float)p) * k;
+		data->phi = n * log(data->e * data->e / n) + 2.01 * log(log((float)n)) * log((float)p) * k;
 		break;
 	}
 	return true;
