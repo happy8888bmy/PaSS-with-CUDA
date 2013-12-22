@@ -6,60 +6,64 @@
  */
 
 #include "PaSS_BLAS.cu"
-using namespace pass;
+using namespace pass_blas;
 
 #include <algorithm>
 using namespace std;
 
 /**
- * The status type
- *  0: Initial
- *  1: Forward
- * -1: Backward
-*/
-typedef int Stat;
-
-
-/**
- * The criterion enumeration
+ * The PaSS namespace
  */
-enum Criterion {
-	AIC,   /**< Akaike information criterion */
-	BIC,   /**< Bayesian information criterion */
-	EBIC,  /**< EBIC */
-	HDBIC, /**< HDBIC */
-	HDHQ   /**< HDHQ */
-};
+namespace pass{
+	/**
+	 * The status enumeration
+	*/
+	enum Stat {
+		init = 0,  /**< initialing */
+		forw = 1,  /**< going forward */
+		back = -1, /**< going backward */
+	};
 
+	/**
+	 * The criterion enumeration
+	 */
+	enum Criterion {
+		AIC,   /**< Akaike information criterion */
+		BIC,   /**< Bayesian information criterion */
+		EBIC,  /**< EBIC */
+		HDBIC, /**< HDBIC */
+		HDHQ   /**< HDHQ */
+	};
 
-/**
- * The parameter structure
- */
-struct Parameter {
-	u32 nP;    /**< the number of particle */
-	u32 nI;    /**< the number of iteration */
-	float pfg; /**< the probability for forward step: global */
-	float pfl; /**< the probability for forward step: local */
-	float pfr; /**< the probability for forward step: random */
-	float pbl; /**< the probability for backward step: local */
-	float pbr; /**< the probability for backward step: random */
-};
+	/**
+	 * The parameter structure
+	 */
+	struct Parameter {
+		u32 nP;    /**< the number of particle */
+		u32 nI;    /**< the number of iteration */
+		float pfg; /**< the probability for forward step: global */
+		float pfl; /**< the probability for forward step: local */
+		float pfr; /**< the probability for forward step: random */
+		float pbl; /**< the probability for backward step: local */
+		float pbr; /**< the probability for backward step: random */
+	};
 
-
-/**
- * The data structure
- */
-struct Data {
-	vec* Beta;  /**< the vector beta */
-	float e;    /**< the norm of R */
-	idx* Index; /**< the index of chosen column of X */
-	mat* InvA;  /**< the inverse of A */
-	float phi;  /**< the value given by criterion */
-	vec* R;     /**< the difference between Y and Beta */
-	Stat stat;  /**< the status */
-	vec* Theta; /**< the vector theta */
-	mat* X;     /**< the data we chosen */
-};
+	/**
+	 * The data structure
+	 */
+	struct Data {
+		vec* Beta;  /**< the vector beta */
+		float e;    /**< the norm of R */
+		idx* Index; /**< the index of chosen column of X */
+		mat* InvA;  /**< the inverse of A */
+		float phi;  /**< the value given by criterion */
+		vec* R;     /**< the difference between Y and Beta */
+		Stat stat;  /**< the status */
+		vec* Theta; /**< the vector theta */
+		mat* X;     /**< the data we chosen */
+	};
+}
+using namespace pass;
 
 
 // Global variables
@@ -258,10 +262,10 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	mat* Phi = new mat(par.nI+1, par.nP);
 	if(isRandInitial || p < par.nP) {
 		for(j = 0; j < par.nP; j++) {
-			data[j].stat = 0;
+			data[j].stat = init;
 			pass_update_cri(&data[j], curand(&s) % p);
 			Phi->col[j]->e[0] = data[j].phi;
-			data[j].stat = 1;
+			data[j].stat = forw;
 		}
 	}
 	else {
@@ -270,10 +274,10 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 		for(j = 0; j < par.nP; j++) {
 			mul(C, Y, X);
 			sort_index_descend(I, C);
-			data[j].stat = 0;
+			data[j].stat = init;
 			pass_update_cri(&data[j], I->e[j]);
 			Phi->col[j]->e[0] = data[j].phi;
-			data[j].stat = 1;
+			data[j].stat = forw;
 		}
 		delete C;
 		delete I;
@@ -291,13 +295,13 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 				data_best = &data[j];
 			}
 			if(data[j].phi - Phi->col[j]->e[i] > 0) {
-				data[j].stat = -data[j].stat;
+				data[j].stat = (Stat)(-data[j].stat);
 			}
 			if(data[j].Index->n <= 1) {
-				data[j].stat = 1;
+				data[j].stat = forw;
 			}
 			if(data[j].Index->n >= p - 5) {
-				data[j].stat = -1;
+				data[j].stat = back;
 			}
 		}
 	}
@@ -314,7 +318,7 @@ __device__ bool pass_update_fb(Data* data) {
 	u32 index = 0;
 
 	switch(data->stat) {
-	case 1: // Forward
+	case forw: // Forward
 		{
 			idx* Index_B = new idx(data_best->Index->n);
 			idx* Index_C = new idx(data->Index->n);
@@ -360,7 +364,7 @@ __device__ bool pass_update_fb(Data* data) {
 			delete Index_R;
 			break;
 		}
-	case -1: // Backward
+	case back: // Backward
 		{
 			// Determine the index to remove
 			if(curand_uniform(&s)< par.pbl){
@@ -399,7 +403,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	u32 k = 0;
 	vec* Xnew = X->col[index];
 	switch(data->stat) {
-	case 0: // Initial
+	case init: // Initial
 		{
 			data->X = new mat(n, 1);
 			copy(data->X->col[0], Xnew);
@@ -423,7 +427,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			k = 1;
 		}
 		break;
-	case 1: // Forward
+	case forw: // Forward
 		{
 			k = data->Index->n;
 			vec* B = new vec(k);
@@ -466,7 +470,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			k++;
 		}
 		break;
-	case -1: // Backward
+	case back: // Backward
 		{
 			k = data->Index->n - 1;
 			u32 ii;
