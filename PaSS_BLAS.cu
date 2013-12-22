@@ -24,7 +24,7 @@
  */
 namespace pass_blas {
 	/**
-	 * 32-bit unsigned int.
+	 * 32-bit unsigned integer.
 	 */
 	typedef uint32_t u32;
 
@@ -163,7 +163,7 @@ namespace pass_blas {
 	 * Display the vector.
 	 *
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool print(const vec* v) {
 		for(u32 i = 0; i < v->n; i++) {
@@ -178,7 +178,7 @@ namespace pass_blas {
 	 * Display the matrix.
 	 *
 	 * @param a the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool print(const mat* a) {
 		for(u32 j = 0; j < a->n_row; j++) {
@@ -196,7 +196,7 @@ namespace pass_blas {
 	 * Display the index.
 	 *
 	 * @param x the index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool print(const idx* x) {
 		for(u32 i = 0; i < x->n; i++) {
@@ -212,7 +212,7 @@ namespace pass_blas {
 	 *
 	 * @param u the new vector.
 	 * @param v the original vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool copy(vec* u, const vec* v) {
 		if(u->n != v->n) {
@@ -229,7 +229,7 @@ namespace pass_blas {
 	 *
 	 * @param c the new matrix.
 	 * @param a the original matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool copy(mat* c, const mat* a) {
 		if(c->n_col != a->n_col || c->n_row != a->n_row) {
@@ -248,7 +248,7 @@ namespace pass_blas {
 	 *
 	 * @param x the new index.
 	 * @param z the original index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool copy(idx* z, const idx* x) {
 		if(z->n != x->n) {
@@ -266,7 +266,7 @@ namespace pass_blas {
 	 * @param u the sum vector.
 	 * @param v the augend vector.
 	 * @param w the addend vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool add(vec* u, const vec* v, const vec* w) {
 		if(u->n != v->n || u->n != w->n) {
@@ -286,7 +286,7 @@ namespace pass_blas {
 	 * @param b the sum matrix.
 	 * @param c the augend matrix.
 	 * @param a the addend matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool add(mat* c, const mat* a, const mat* b) {
 		if(c->n_col != a->n_col || c->n_col != b->n_col || c->n_row != a->n_row || c->n_row != b->n_row) {
@@ -308,7 +308,7 @@ namespace pass_blas {
 	 * @param u the difference vector.
 	 * @param v the minuend vector.
 	 * @param w the subtrahend vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sub(vec* u, const vec* v, const vec* w) {
 		if(u->n != v->n || u->n != w->n) {
@@ -328,7 +328,7 @@ namespace pass_blas {
 	 * @param b the difference matrix.
 	 * @param c the minuend matrix.
 	 * @param a the subtrahend matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sub(mat* c, const mat* a, const mat* b) {
 		if(c->n_col != a->n_col || c->n_col != b->n_col || c->n_row != a->n_row || c->n_row != b->n_row) {
@@ -350,7 +350,7 @@ namespace pass_blas {
 	 * @param u the product vector.
 	 * @param v the multiplier vector.
 	 * @param d the multiplicand number.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(vec* u, const vec* v, const float d) {
 		for(u32 i = 0; i < v->n; i++) {
@@ -366,7 +366,7 @@ namespace pass_blas {
 	 * @param c the product matrix.
 	 * @param a the multiplier vector.
 	 * @param d the multiplicand number.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(mat* c, const mat* a, const float d) {
 		for(u32 i = 0; i < a->n_col; i++) {
@@ -384,7 +384,7 @@ namespace pass_blas {
 	 * @param u the product vector.
 	 * @param a the multiplicand matrix.
 	 * @param v the multiplier vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(vec* u, const mat* a, const vec* v) {
 		if(u->n != a->n_row || v->n != a->n_col) {
@@ -409,7 +409,7 @@ namespace pass_blas {
 	 * @param u the product vector.
 	 * @param v the multiplicand vector.
 	 * @param a the multiplier matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(vec* u, const vec* v, const mat* a) {
 		if(u->n != a->n_col || v->n != a->n_row) {
@@ -432,7 +432,7 @@ namespace pass_blas {
 	 * @param c the product matrix.
 	 * @param v the multiplicand vector.
 	 * @param w the multiplier vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(mat* c, const vec* v, const vec* w) {
 		for(u32 i = 0; i < c->n_col; i++) {
@@ -449,7 +449,7 @@ namespace pass_blas {
 	 *
 	 * @param d the product number.
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool inner(float* d, const vec* v) {
 		*d = 0;
@@ -466,7 +466,7 @@ namespace pass_blas {
 	 * @param v the multiplicand vector.
 	 * @param w the multiplier vector.
 	 * @param d the product number.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool inner(float* d, const vec* v, const vec* w) {
 		if(v->n != w->n) {
@@ -486,7 +486,7 @@ namespace pass_blas {
 	 *
 	 * @param u the product vector.
 	 * @param a the matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool inner(vec* u, const mat* a) {
 		if(u->n != a->n_col) {
@@ -509,7 +509,7 @@ namespace pass_blas {
 	 * @param u the product vector.
 	 * @param a the multiplicand matrix.
 	 * @param b the multiplier matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool inner(vec* u, const mat* a, const mat* b) {
 		if(u->n != a->n_col || a->n_col != b->n_col || a->n_row != b->n_row) {
@@ -531,7 +531,7 @@ namespace pass_blas {
 	 *
 	 * @param d the Euclidean norm.
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool norm(float* d, const vec* v) {
 		inner(d, v);
@@ -545,7 +545,7 @@ namespace pass_blas {
 	 *
 	 * @param v the vector.
 	 * @param d the new entry.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool insert(vec* v, const float d) {
 		v->n++;
@@ -563,7 +563,7 @@ namespace pass_blas {
 	 *
 	 * @param x the index.
 	 * @param i the new entry.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool insert(idx* x, const u32 i) {
 		x->n++;
@@ -581,7 +581,7 @@ namespace pass_blas {
 	 *
 	 * @param a the matrix.
 	 * @param v the new vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool insert_row(mat* a, const vec* v) {
 		if(a->n_col != v->n) {
@@ -607,7 +607,7 @@ namespace pass_blas {
 	 *
 	 * @param a the matrix.
 	 * @param v the new vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool insert_col(mat* a, const vec* v) {
 		if(a->n_row != v->n) {
@@ -630,7 +630,7 @@ namespace pass_blas {
 	 *
 	 * @param a the matrix.
 	 * @param d the number.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool insert(mat* a, const float d) {
 		a->n_row++;
@@ -657,7 +657,7 @@ namespace pass_blas {
 	 * Remove the last entry.
 	 *
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed(vec* v) {
 		if(v->n == 0) {
@@ -682,7 +682,7 @@ namespace pass_blas {
 	 * Remove the last entry.
 	 *
 	 * @param x the index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed(idx* x) {
 		if(x->n == 0) {
@@ -708,7 +708,7 @@ namespace pass_blas {
 	 *
 	 * @param x the index.
 	 * @param n number of entries.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed(idx* x, const u32 n) {
 		if(n == 0) {
@@ -736,7 +736,7 @@ namespace pass_blas {
 	 * Remove the last row.
 	 *
 	 * @param a the matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed_row(mat* a) {
 		if(a->n_row == 0) {
@@ -768,7 +768,7 @@ namespace pass_blas {
 	 * Remove the last column.
 	 *
 	 * @param a the matrix.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed_col(mat* a) {
 		if(a->n_col == 0) {
@@ -796,7 +796,7 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @param i the index of first entry.
 	 * @param j the index of second entry.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool swap(vec* v, const u32 i, const u32 j) {
 		float temp;
@@ -813,7 +813,7 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @param i the index of first entry.
 	 * @param j the index of second entry.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool swap(idx* x, const u32 i, const u32 j) {
 		u32 temp;
@@ -830,7 +830,7 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @param i the index of first row.
 	 * @param j the index of second row.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool swap_row(mat* a, const u32 i, const u32 j) {
 		float temp;
@@ -849,7 +849,7 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @param i the index of first column.
 	 * @param j the index of second column.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool swap_col(mat* a, const u32 i, const u32 j) {
 		vec* temp;
@@ -866,7 +866,7 @@ namespace pass_blas {
 	 * @param k the index.
 	 * @param x the vector.
 	 * @param i the element.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool find_index(u32* k, const idx* x, const u32 i) {
 		for(u32 j = 0; j < x->n; j++) {
@@ -886,7 +886,7 @@ namespace pass_blas {
 	 *
 	 * @param k the index.
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool find_min_index(u32* k, const vec* v) {
 		float d = _FPCLASS_PINF;
@@ -903,7 +903,7 @@ namespace pass_blas {
 	 * Sort a index in ascending order
 	 *
 	 * @param x the index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sort_ascend(idx* x) {
 		u32 temp;
@@ -924,7 +924,7 @@ namespace pass_blas {
 	 * Sort a index in descending order
 	 *
 	 * @param x the index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sort_descend(idx* x) {
 		u32 temp;
@@ -946,7 +946,7 @@ namespace pass_blas {
 	 *
 	 * @param z the sorted index.
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sort_index_ascend(idx* z, const vec* v) {
 		if(z->n != v->n) {
@@ -985,7 +985,7 @@ namespace pass_blas {
 	 *
 	 * @param z the sorted index.
 	 * @param v the vector.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool sort_index_descend(idx* z, const vec* v) {
 		if(z->n != v->n) {
@@ -1025,7 +1025,7 @@ namespace pass_blas {
 	 * @param z the complement set index.
 	 * @param x the origin set index.
 	 * @param n the length of universe.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool complement(idx* z, const idx* x, const u32 n) {
 		if(z->n + x->n != n) {
@@ -1052,7 +1052,7 @@ namespace pass_blas {
 	 * @param z the difference set index.
 	 * @param x the minuend set index.
 	 * @param y the subtrahend set index.
-	 * @return whether this function has been executed successfully.
+	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool set_difference(idx* z, const idx* x, const idx* y) {
 		if(z->n != x->n) {
