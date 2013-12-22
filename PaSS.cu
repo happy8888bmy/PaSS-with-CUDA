@@ -19,9 +19,9 @@ namespace pass{
 	 * The status enumeration
 	*/
 	enum Stat {
-		init = 0,  /**< initialing */
-		forw = 1,  /**< going forward */
-		back = -1, /**< going backward */
+		init = 0,  /**< initial step */
+		forw = 1,  /**< forward step */
+		back = -1, /**< backward step */
 	};
 
 	/**
