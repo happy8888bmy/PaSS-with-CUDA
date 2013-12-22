@@ -19,24 +19,38 @@
 #include <stdio.h>
 #include <stdint.h>
 
-typedef uint32_t u32;
-
 /**
- * The PaSS namespace
+ * The PaSS_BLAS namespace
  */
-namespace pass {
+namespace pass_blas {
+	/**
+	 * 32-bit unsigned int.
+	 */
+	typedef uint32_t u32;
+
 	/**
 	 * The vector structure
 	 */
 	struct vec {
-		u32 n;    // the length
-		float* e; // the array of entries
-
+		u32 n;    /**< the length */
+		float* e; /**< the array of entries */
+		
+		/**
+		 * Construct a vector.
+		 *
+		 * @param n the length of the vector.
+		 */
 		__host__ __device__ vec(const u32 n) {
 			this->n = n;
 			this->e = (float*)malloc(n * sizeof(float));
 		}
-
+		
+		/**
+		 * Construct a vector and fill it with given value.
+		 *
+		 * @param n the length of the vector.
+		 * @param d the value of entries.
+		 */
 		__host__ __device__ vec(const u32 n, const float d) {
 			this->n = n;
 			this->e = (float*)malloc(n * sizeof(float));
@@ -44,7 +58,10 @@ namespace pass {
 				this->e[i] = d;
 			}
 		}
-
+		
+		/**
+		 * Destruct the vector.
+		 */
 		__host__ __device__ ~vec() {
 			free(this->e);
 		}
@@ -55,10 +72,16 @@ namespace pass {
 	 * The matrix structure
 	 */
 	struct mat {
-		u32 n_row; // the number of rows
-		u32 n_col; // the number of cols
-		vec** col; // the array of columns
-
+		u32 n_row; /**< the number of rows */
+		u32 n_col; /**< the number of columns */
+		vec** col; /**< the array of columns */
+		
+		/**
+		 * Construct a matrix.
+		 *
+		 * @param p the number of rows of the vector.
+		 * @param q the number of columns of the vector.
+		 */
 		__host__ __device__ mat(const u32 p, const u32 q) {
 			this->n_row = p;
 			this->n_col = q;
@@ -67,7 +90,14 @@ namespace pass {
 				this->col[i] = new vec(p);
 			}
 		}
-
+		
+		/**
+		 * Construct a matrix and fill it with given value.
+		 *
+		 * @param p the number of rows of the vector.
+		 * @param q the number of columns of the vector.
+		 * @param d the value of entries.
+		 */
 		__host__ __device__ mat(const u32 p, const u32 q, const float d) {
 			this->n_row = p;
 			this->n_col = q;
@@ -77,6 +107,9 @@ namespace pass {
 			}
 		}
 		
+		/**
+		 * Destruct the matrix.
+		 */
 		__host__ __device__ ~mat() {
 			for(u32 i = 0; i < this->n_col; i++) {
 				delete this->col[i];
@@ -90,14 +123,25 @@ namespace pass {
 	 * The index structure
 	 */
 	struct idx {
-		u32 n;  // the length
-		u32* e; // the array of entries
-
+		u32 n;  /**< the length */
+		u32* e; /**< the array of entries */
+		
+		/**
+		 * Construct a index.
+		 *
+		 * @param n the length of the index.
+		 */
 		__host__ __device__ idx(const u32 n) {
 			this->n = n;
 			this->e = (u32*)malloc(n * sizeof(u32));
 		}
-
+		
+		/**
+		 * Construct a index and fill it with given value.
+		 *
+		 * @param n the length of the index.
+		 * @param d the value of entries.
+		 */
 		__host__ __device__ idx(const u32 n, const u32 d) {
 			this->n = n;
 			this->e = (u32*)malloc(n * sizeof(u32));
@@ -105,7 +149,10 @@ namespace pass {
 				this->e[i] = d;
 			}
 		}
-
+		
+		/**
+		 * Destruct the index.
+		 */
 		__host__ __device__ ~idx() {
 			free(this->e);
 		}
@@ -435,10 +482,10 @@ namespace pass {
 
 
 	/**
-	 * d = sum(sum(a.*a)).
+	 * u = sum(a.*a).
 	 *
+	 * @param u the product vector.
 	 * @param a the matrix.
-	 * @param d the product number.
 	 * @return whether this function has been executed successfully.
 	 */
 	__host__ __device__ bool inner(vec* u, const mat* a) {
@@ -459,9 +506,9 @@ namespace pass {
 	/**
 	 * u' = sum(a.*b).
 	 *
+	 * @param u the product vector.
 	 * @param a the multiplicand matrix.
 	 * @param b the multiplier matrix.
-	 * @param u the product vector.
 	 * @return whether this function has been executed successfully.
 	 */
 	__host__ __device__ bool inner(vec* u, const mat* a, const mat* b) {
@@ -818,7 +865,7 @@ namespace pass {
 	 *
 	 * @param k the index.
 	 * @param x the vector.
-	 * @param d the element.
+	 * @param i the element.
 	 * @return whether this function has been executed successfully.
 	 */
 	__host__ __device__ bool find_index(u32* k, const idx* x, const u32 i) {
