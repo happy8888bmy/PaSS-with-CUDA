@@ -435,6 +435,10 @@ namespace pass_blas {
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool mul(mat* c, const vec* v, const vec* w) {
+		if(v->n != c->n_row || w->n != c->n_col) {
+			printf("(mul: matrix) not aligned!\n");
+			return false;
+		}
 		for(u32 i = 0; i < c->n_col; i++) {
 			for(u32 j = 0; j < c->n_row; j++) {
 				c->col[i]->e[j] = v->e[j] * w->e[i];
@@ -577,6 +581,34 @@ namespace pass_blas {
 
 
 	/**
+	 * Add a new row and a new column at the end.
+	 *
+	 * @param a the matrix.
+	 * @param d the number.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ bool insert(mat* a, const float d) {
+		a->n_row++;
+		a->n_col++;
+		float* ftemp;
+		for(u32 i = 0; i < a->n_col-1; i++) {
+			a->col[i]->n++;
+			ftemp = (float*)malloc(a->n_row * sizeof(float));
+			memcpy(ftemp, a->col[i]->e, (a->n_row-1) * sizeof(float));
+			free(a->col[i]->e);
+			a->col[i]->e = ftemp;
+			a->col[i]->e[a->n_row-1] = d;
+		}
+		vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
+		memcpy(temp, a->col, (a->n_col-1) * sizeof(vec*));
+		free(a->col);
+		a->col = temp;
+		a->col[a->n_col-1] = new vec(a->n_row, d);
+		return true;
+	}
+
+
+	/**
 	 * Add a new row at the end.
 	 *
 	 * @param a the matrix.
@@ -621,34 +653,6 @@ namespace pass_blas {
 		a->col = temp;
 		a->col[a->n_col-1] = new vec(v->n);
 		copy(a->col[a->n_col-1], v);
-		return true;
-	}
-
-
-	/**
-	 * Add a new row and a new column at the end.
-	 *
-	 * @param a the matrix.
-	 * @param d the number.
-	 * @return whether this function has been executed successfully or not.
-	 */
-	__host__ __device__ bool insert(mat* a, const float d) {
-		a->n_row++;
-		a->n_col++;
-		float* ftemp;
-		for(u32 i = 0; i < a->n_col-1; i++) {
-			a->col[i]->n++;
-			ftemp = (float*)malloc(a->n_row * sizeof(float));
-			memcpy(ftemp, a->col[i]->e, (a->n_row-1) * sizeof(float));
-			free(a->col[i]->e);
-			a->col[i]->e = ftemp;
-			a->col[i]->e[a->n_row-1] = d;
-		}
-		vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
-		memcpy(temp, a->col, (a->n_col-1) * sizeof(vec*));
-		free(a->col);
-		a->col = temp;
-		a->col[a->n_col-1] = new vec(a->n_row, d);
 		return true;
 	}
 
@@ -875,7 +879,7 @@ namespace pass_blas {
 				return true;
 			}
 		}
-		*k = UINT32_MAX;
+		*k = (u32)(-1);
 		printf("(find_index) index not found!\n");
 		return false;
 	}
@@ -889,7 +893,7 @@ namespace pass_blas {
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool find_min_index(u32* k, const vec* v) {
-		float d = _FPCLASS_PINF;
+		float d = FLT_MAX;
 		for(u32 j = 0; j < v->n; j++) {
 			if(v->e[j] < d) {
 				*k = j;
@@ -1062,15 +1066,18 @@ namespace pass_blas {
 		u32 i, j, k;
 		for(i = 0, j = 0, k = 0; i < x->n && j < y->n;) {
 			if(x->e[i] < y->e[j]) {
-				z->e[k] = x->e[i] ;
+				z->e[k] = x->e[i];
 				i++;
 				k++;
-			}else if(x->e[i] == y->e[j]) {
+			} else if(x->e[i] == y->e[j]) {
 				i++;
 				j++;
-			}else {
+			} else {
 				j++;
 			}
+		}
+		for(; i < x->n; i++, k++) {
+			z->e[k] = x->e[i];
 		}
 		while(k != z->n) {
 			shed(z, z->n - k);
