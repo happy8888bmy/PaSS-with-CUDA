@@ -8,6 +8,7 @@
 #include "PaSS_BLAS.cu"
 using namespace pass_blas;
 
+#include <ctime>
 #include <random>
 using namespace std;
 
@@ -70,20 +71,19 @@ using namespace pass;
 __device__ u32 n, p;
 __device__ mat* X;
 __device__ vec* Y;
-__device__ Criterion cri = HDBIC;
-__device__ Parameter par = {16, 32, .8, .1, .1, .9, .1};
+__device__ Criterion cri = EBIC;
+__device__ Parameter par;
 __device__ float data_best_phi;
 __device__ idx* data_best_Index;
 __device__ curandState s;
 
-u32 nI = 32;
 __device__ vec* Phi;
 __device__ Data* data;
 
 // Functions
 void pass_init(float*, float*, const u32, const u32);
-u32 pass_host(const float*, const float*, u32*, const u32, const u32);
-__global__ void pass_kernel(const float*, const float*, u32*, const u32, const u32, u32*);
+u32 pass_host(const float*, const float*, u32*, const u32, const u32, const Parameter);
+__global__ void pass_kernel(const float*, const float*, u32*, const u32, const u32, const Parameter, u32*);
 __device__ bool pass_update_fb(Data*);
 __device__ bool pass_update_cri(Data*, const u32);
 
@@ -95,8 +95,9 @@ __global__ void pass_find_best(const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 5;
-	u32 host_p = 20;
+	u32 host_n = 20;
+	u32 host_p = 16;
+	Parameter host_par = {16, 128, .8f, .1f, .1f, .9f, .1f};
 	u32 k;
 	float* host_X = (float*)malloc(host_n * host_p * sizeof(float));
 	float* host_Y = (float*)malloc(host_n * sizeof(float));
@@ -106,7 +107,7 @@ int main() {
 	pass_init(host_X, host_Y, host_n, host_p);
 		
 	// Run PaSS
-	k = pass_host(host_X, host_Y, host_I, host_n, host_p);
+	k = pass_host(host_X, host_Y, host_I, host_n, host_p, host_par);
 	
 	// Display data
 	for(u32 i = 0; i < k; i++) {
@@ -131,15 +132,15 @@ __host__ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u3
 	u32 q = 10;
 	mat* XX = new mat(host_n, host_p);
 	vec* YY = new vec(host_n);
-	vec* Beta = new vec(host_p, 0.0);
-	vec* X_hat = new vec(host_n, 0.0);
-	vec* Error = new vec(host_n, 0.0);
+	vec* Beta = new vec(host_p, 0.0f);
+	vec* X_hat = new vec(host_n, 0.0f);
+	vec* Error = new vec(host_n, 0.0f);
 	vec* Temp = new vec(host_p);
 	float temp;
 
 	// Generate XX and Error using normal random
-	default_random_engine generator;
-	normal_distribution<float> distribution(1.0, 1.0);
+	default_random_engine generator((u32)time(NULL));
+	normal_distribution<float> distribution;
 	for(j = 0; j < host_p; j++) {
 		for(i = 0; i < host_n; i++) {
 			XX->col[j]->e[i] = distribution(generator);
@@ -150,42 +151,36 @@ __host__ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u3
 	}
 	
 	// Compute XX and YY
-	Beta->e[0] = 3;
-	Beta->e[0] = 3.75;
-	Beta->e[0] = 4.5;
-	Beta->e[0] = 5.25;
-	Beta->e[0] = 6;
-	Beta->e[0] = 6.75;
-	Beta->e[0] = 7.5;
-	Beta->e[0] = 8.25;
-	Beta->e[0] = 9;
-	Beta->e[0] = 9.75;
+	Beta->e[0] = 3.0f;
+	Beta->e[1] = 3.75f;
+	Beta->e[2] = 4.5f;
+	Beta->e[3] = 5.25f;
+	Beta->e[4] = 6.0f;
+	Beta->e[5] = 6.75f;
+	Beta->e[6] = 7.5f;
+	Beta->e[7] = 8.25f;
+	Beta->e[8] = 9.0f;
+	Beta->e[9] = 9.75f;
 	for(j = 0; j < q; j++) {
 		add(X_hat, X_hat, XX->col[j]);
 	}
-	float b = 1 / sqrt(2 * (float)q);
+	mul(X_hat, X_hat, 1 / sqrt(2 * (float)q));
 	for(j = q; j < host_p; j++) {
+		mul(XX->col[j], XX->col[j], .5f);
 		add(XX->col[j], XX->col[j], X_hat);
 	}
 	mul(YY, XX, Beta);
 	add(YY, YY, Error);
 	
 	// Normalize XX
-	inner(Temp, XX);
 	for(j = 0; j < host_p; j++) {
-		temp = sqrt(Temp->e[j]);
-		for(i = 0; i < host_n; i++) {
-			XX->col[j]->e[i] /= temp;
-		}
+		norm(&temp, XX->col[j]);
+		mul(XX->col[j], XX->col[j], 1/temp);
 	}
 
 	// Normalize YY
 	norm(&temp, YY);
 	mul(YY, YY, 1/temp);
-
-	//// Display XX and YY
-	//print(XX);
-	//print(YY);
 
 	// Put XX and YY into host_X and host_Y
 	for(j = 0; j < host_p; j++) {
@@ -213,10 +208,11 @@ __host__ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u3
  * @param host_Y the vector Y
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
+ * @param host_par the parameter data
  */
-__host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, const u32 host_n, const u32 host_p) {
+__host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, const u32 host_n, const u32 host_p, const Parameter host_par) {
 	// Declare variables
-	u32 host_k;
+	u32 host_k = 0;
 	float* dev_X = 0;
 	float* dev_Y = 0;
 	u32* dev_I = 0;
@@ -267,7 +263,7 @@ __host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, co
 	}
 
 	// Launch the kernel function on the GPU with one thread for each element.
-	pass_kernel<<<1, 1>>>(dev_X, dev_Y, dev_I, host_n, host_p, dev_k);
+	pass_kernel<<<1, 1>>>(dev_X, dev_Y, dev_I, host_n, host_p, host_par, dev_k);
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
@@ -284,7 +280,7 @@ __host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, co
 	}
 
 	//system("pause");
-	for(u32 i = 0; i < nI; i++) {
+	for(u32 i = 0; i < host_par.nI; i++) {
 		//printf("iteration = %d\n", i);
 		pass_find_best<<<1, 1>>>(i);
 		// Check for any errors launching the kernel.
@@ -333,18 +329,18 @@ Error:
  * @param array_Y the vector Y
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
+ * @param host_par the parameter data
  */
-__global__ void pass_kernel(const float* array_X, const float* array_Y, u32* array_I, const u32 host_n, const u32 host_p, u32* k) {
+__global__ void pass_kernel(const float* array_X, const float* array_Y, u32* array_I, const u32 host_n, const u32 host_p, const Parameter host_par, u32* k) {
 	// Initialize Random Seed
 	curand_init(clock64(), 0, 0, &s);
 
 	// Declare variables
 	n = host_n;
 	p = host_p;
+	par = host_par;
 	X = new mat(n, p);
 	Y = new vec(n);
-	//vec* Phi = new vec(par.nP);
-	//Data* data = new Data[par.nP];
 	Phi = new vec(par.nP);
 	data = new Data[par.nP];
 	u32 i, j;
@@ -361,8 +357,19 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 
 	// Set Random Initial
 	bool isRandInitial = false;
-
-
+	
+	// Compute Correct Criterion
+	Data data_T;
+	data_T.stat = init;
+	pass_update_cri(&data_T, 0);
+	printf("Phi = %8.3f, Index = ", data_T.phi); print(data_T.Index);
+	data_T.stat = forw;
+	for(u32 ii = 1; ii < 10; ii++) {
+		pass_update_cri(&data_T, ii);
+		printf("Phi = %8.3f, Index = ", data_T.phi); print(data_T.Index);
+		
+	}
+	printf("Beta = "); print(data_T.Beta);
 	// Initialize Particles
 	if(isRandInitial || p < par.nP) {
 		for(j = 0; j < par.nP; j++) {
@@ -376,10 +383,10 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	else {
 		vec* C = new vec(p);
 		idx* I = new idx(p);
+		mul(C, Y, X);
+		sort_index(I, C);
 		for(j = 0; j < par.nP; j++) {
 			//printf("particle = %d\n", j);
-			mul(C, Y, X);
-			sort_index_descend(I, C);
 			data[j].stat = init;
 			pass_update_cri(&data[j], I->e[j]);
 			Phi->e[j] = data[j].phi;
@@ -393,7 +400,7 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	data_best_phi = data[0].phi;
 	data_best_Index = data[0].Index;
 
-	//// Find Best Data
+	// Find Best Data
 	//for(u32 i = 0; i < par.nI; i++) {
 	//	for(u32 j = 0; j < par.nP; j++) {
 	//		pass_update_fb(&data[j]);
@@ -416,15 +423,17 @@ __global__ void pass_kernel(const float* array_X, const float* array_Y, u32* arr
 	//	print(data_best_Index);
 	//}
 	
-	*k = data_best_Index->n;
-	for(u32 i = 0; i < *k; i++) {
-		array_I[i] = data_best_Index->e[i];
-	}
+	//*k = data_best_Index->n;
+	//for(u32 i = 0; i < *k; i++) {
+	//	array_I[i] = data_best_Index->e[i];
+	//}
 
 	//delete X;
 	//delete Y;
 	//delete Phi;
 	//delete data;
+	
+	*k = 0;
 }
 
 // PaSS Find Best
@@ -486,7 +495,7 @@ __device__ bool pass_update_fb(Data* data) {
 			else if(curand_uniform(&s) < par.pfl/(par.pfl+par.pfr)){
 				float phi_max = -1, phi_temp;
 				for(u32 i = 0; i < Index_R->n; i++) {
-					inner(&phi_temp, data->R, X->col[i]);
+					inner(&phi_temp, data->R, X->col[Index_R->e[i]]);
 					phi_temp = abs(phi_temp);
 					if(phi_temp > phi_max) {
 						phi_max = phi_temp;
@@ -569,6 +578,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	case forw: // Forward
 		{
 			k = data->Index->n;
+			
 			vec* B = new vec(k);
 			vec* D = new vec(k);
 			mat* InvAtemp = new mat(k+1, k+1);
@@ -584,13 +594,13 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			inner(&c2, B, D);
 			alpha = 1/(c1 - c2);
 
-			insert(D, -1);
+			insert(D, -1.0f);
 
 			insert_col(data->X, Xnew);
 
 			mul(InvAtemp, D, D);
 			mul(InvAtemp, InvAtemp, alpha);
-			insert(data->InvA, 0);
+			insert(data->InvA, 0.0f);
 			add(data->InvA, data->InvA, InvAtemp);
 			
 			inner(&c1, Xnew, Y);
@@ -598,7 +608,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			
 			inner(&c2, D, data->Theta);
 			mul(D, D, alpha*c2);
-			insert(data->Beta, 0);
+			insert(data->Beta, 0.0f);
 			add(data->Beta, data->Beta, D);
 
 			insert(data->Index, index);
@@ -644,17 +654,15 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			
 			mul(F, F, data->Beta->e[k] / g);
 			shed(data->Beta);
-			add(data->Beta, data->Beta, F);
+			sub(data->Beta, data->Beta, F);
 
 			delete E;
 			delete F;
 		}
 		break;
 	}
-	//printf("Stat = %d Beta = ", data->stat);
-	//print(data->Beta);
 
-	mul(data->R, data->X,  data->Beta);
+	mul(data->R, data->X, data->Beta);
 	sub(data->R, Y, data->R);
 
 	norm(&data->e, data->R);
