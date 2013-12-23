@@ -393,9 +393,7 @@ namespace pass_blas {
 		}
 		for(u32 j = 0; j < a->n_row; j++) {
 			u->e[j] = 0;
-		}
-		for(u32 i = 0; i < a->n_col; i++) {
-			for(u32 j = 0; j < a->n_row; j++) {
+			for(u32 i = 0; i < a->n_col; i++) {
 				u->e[j] += a->col[i]->e[j] * v->e[i];
 			}
 		}
@@ -896,6 +894,7 @@ namespace pass_blas {
 		float d = FLT_MAX;
 		for(u32 j = 0; j < v->n; j++) {
 			if(v->e[j] < d) {
+				d = v->e[j];
 				*k = j;
 			}
 		}
@@ -949,10 +948,10 @@ namespace pass_blas {
 	 * Sort index of a vector in ascending order
 	 *
 	 * @param z the sorted index.
-	 * @param v the vector.
+	 * @param v the vector (will be sorted).
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sort_index_ascend(idx* z, const vec* v) {
+	__host__ __device__ bool sort_index(idx* z, vec* v) {
 		if(z->n != v->n) {
 			printf("(sort_index) not aligned!\n");
 			return false;
@@ -963,62 +962,20 @@ namespace pass_blas {
 		if(v->n < 2) {
 			return true;
 		}
-		vec* u = new vec(v->n);
-		copy(u, v);
-		float utemp;
-		u32 xtemp;
-		for(u32 i = u->n-1; i > 0; i--) {
+		float vtemp;
+		u32 ztemp;
+		for(u32 i = v->n-1; i > 0; i--) {
 			for(u32 j = 0; j < i; j++) {
-				if(u->e[j] > u->e[j+1]) {
-					utemp = u->e[j];
-					u->e[j] =u->e[j+1];
-					u->e[j+1] = utemp;
-					xtemp = z->e[j];
+				if(v->e[j] > v->e[j+1]) {
+					vtemp = v->e[j];
+					v->e[j] = v->e[j+1];
+					v->e[j+1] = vtemp;
+					ztemp = z->e[j];
 					z->e[j] = z->e[j+1];
-					z->e[j+1] = xtemp;
+					z->e[j+1] = ztemp;
 				}
 			}
 		}
-		delete u;
-		return true;
-	}
-
-
-	/**
-	 * Sort index of a vector in descending order
-	 *
-	 * @param z the sorted index.
-	 * @param v the vector.
-	 * @return whether this function has been executed successfully or not.
-	 */
-	__host__ __device__ bool sort_index_descend(idx* z, const vec* v) {
-		if(z->n != v->n) {
-			printf("(sort_index_descend) not aligned!\n");
-			return false;
-		}
-		for(u32 i = 0; i < v->n; i++) {
-			z->e[i] = i;
-		}
-		if(v->n < 2) {
-			return true;
-		}
-		vec* u = new vec(v->n);
-		copy(u, v);
-		float utemp;
-		u32 xtemp;
-		for(u32 i = u->n-1; i > 0; i--) {
-			for(u32 j = 0; j < i; j++) {
-				if(u->e[j] < u->e[j+1]) {
-					utemp = u->e[j];
-					u->e[j] =u->e[j+1];
-					u->e[j+1] = utemp;
-					xtemp = z->e[j];
-					z->e[j] = z->e[j+1];
-					z->e[j+1] = xtemp;
-				}
-			}
-		}
-		delete u;
 		return true;
 	}
 
