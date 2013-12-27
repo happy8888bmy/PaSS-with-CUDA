@@ -308,6 +308,13 @@ __host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u
 	}
 
 	// Copy output vector from GPU buffer to host memory.
+	cudaStatus = cudaMemcpy(host_phi, dev_phi, sizeof(float), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy (phi) failed!\n");
+		goto Error;
+	}
+
+	// Copy output vector from GPU buffer to host memory.
 	cudaStatus = cudaMemcpy(host_k, dev_k, sizeof(u32), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy (k) failed!\n");
@@ -321,13 +328,6 @@ __host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u
 		goto Error;
 	}
 
-	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(host_phi, dev_phi, sizeof(float), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy (phi) failed!\n");
-		goto Error;
-	}
-
 Error:
 	cudaFree(dev_X);
 	cudaFree(dev_Y);
@@ -337,7 +337,7 @@ Error:
 
 
 /**
- * PaSS kernel initialize function
+ * PaSS kernel function
  *
  * @param host_X the matrix X
  * @param host_Y the vector Y
