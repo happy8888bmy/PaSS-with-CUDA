@@ -387,7 +387,7 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 	
 	
 	// Find Best Data
-	for(u32 i = 0; i < par.nI; i++) {
+	for(i = 0; i < par.nI; i++) {
 		// Update data
 		pass_update_fb(data);
 		if(data->phi - phi_old > 0) {
@@ -407,25 +407,26 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		if(id == 0) {
 			id_best = (u32)(-1);
 			for(j = 0; j < par.nP; j++) {
-				if(phi_all[j] > *host_phi) {
+				if(phi_all[j] < *host_phi) {
 					id_best = j;
+					*host_phi = data->phi;
 				}
 			}
 		}
 		__syncthreads();
 		if(id == id_best) {
-			*host_phi = data->phi;
 			put(Index_best, data->Index);
-			printf("id = %d phi = %d\n", id, *host_phi);
+			printf("iter = %3d id = %3d phi = %f\n", i, id, *host_phi);
 		}
 		__syncthreads();
 	}
 	
 	
 	if(id == 0) {
+		printf("iter = %3d id = %3d phi = %f\n", i, id, *host_phi);
 		// Copy Index_best from index to array
 		for(j = 0; j < Index_best->n; j++) {
-			Index_best->e[j] = host_I[j];
+			host_I[j] = Index_best->e[j];
 		}
 		*host_k = Index_best->n;
 
