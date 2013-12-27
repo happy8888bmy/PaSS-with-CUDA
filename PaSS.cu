@@ -330,9 +330,6 @@ Error:
  * @param host_par the parameter data
  */
 __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Parameter host_par) {
-	// Initialize Random Seed
-	curand_init(clock64(), 0, 0, &s);
-
 	// Declare variables
 	u32 id = threadIdx.x;
 	u32 i, j;
@@ -340,6 +337,9 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 	float phi_old;
 	
 	if(id == 0) {
+		// Initialize Random Seed
+		curand_init(clock64(), 0, 0, &s);
+
 		// Declare variables
 		n = host_n;
 		p = host_p;
@@ -358,6 +358,7 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 			Y->e[i] = host_Y[i];
 		}
 	}
+	__syncthreads();
 
 	// Initialize Particles
 	data->stat = init;
