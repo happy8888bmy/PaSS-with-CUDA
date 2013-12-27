@@ -68,26 +68,22 @@ using namespace pass;
 
 
 // Global variables
-__device__ u32 n, p;
+__device__ u32 n, p, id_best;
 __device__ mat* X;
 __device__ vec* Y;
 __device__ Criterion cri = EBIC;
 __device__ Parameter par;
-__device__ float data_best_phi;
-__device__ idx* data_best_Index;
+__device__ float* phi_best;
+__device__ float* phi_all;
+__device__ idx* Index_best;
 __device__ curandState s;
-
-__device__ vec* Phi;
-__device__ Data* data;
 
 // Functions
 void pass_init(float*, float*, const u32, const u32);
-u32 pass_host(const float*, const float*, u32*, const u32, const u32, const Parameter);
-__global__ void pass_kernel(const float*, const float*, u32*, const u32, const u32, const Parameter, u32*);
+void pass_host(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Parameter);
+__global__ void pass_kernel(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Parameter);
 __device__ bool pass_update_fb(Data*);
 __device__ bool pass_update_cri(Data*, const u32);
-
-__global__ void pass_find_best(const u32);
 
 
 /**
@@ -97,20 +93,22 @@ int main() {
 	// Declare variables
 	u32 host_n = 20;
 	u32 host_p = 16;
-	Parameter host_par = {16, 128, .8f, .1f, .1f, .9f, .1f};
-	u32 k;
+	Parameter host_par = {16, 32, .8f, .1f, .1f, .9f, .1f};
 	float* host_X = (float*)malloc(host_n * host_p * sizeof(float));
 	float* host_Y = (float*)malloc(host_n * sizeof(float));
 	u32* host_I = (u32*)malloc(host_p * sizeof(u32));
+	u32 host_k = 0;
+	float host_phi;
 	
 	// Initialize data
 	pass_init(host_X, host_Y, host_n, host_p);
 		
 	// Run PaSS
-	k = pass_host(host_X, host_Y, host_I, host_n, host_p, host_par);
+	pass_host(host_X, host_Y, host_I, &host_k, &host_phi, host_n, host_p, host_par);
 	
 	// Display data
-	for(u32 i = 0; i < k; i++) {
+	printf("phi = %f\n", host_phi);
+	for(u32 i = 0; i < host_k; i++) {
 		printf("%d ", host_I[i]);
 	}
 	printf("\n");
@@ -206,17 +204,20 @@ __host__ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u3
  *
  * @param host_X the matrix X
  * @param host_Y the vector Y
+ * @param host_I the index I
+ * @param host_k length of I
+ * @param host_phi the value phi
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
  * @param host_par the parameter data
  */
-__host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, const u32 host_n, const u32 host_p, const Parameter host_par) {
+__host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Parameter host_par) {
 	// Declare variables
-	u32 host_k = 0;
 	float* dev_X = 0;
 	float* dev_Y = 0;
 	u32* dev_I = 0;
 	u32* dev_k = 0;
+	float* dev_phi = 0;
 	cudaError_t cudaStatus;
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
@@ -238,14 +239,22 @@ __host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, co
 		fprintf(stderr, "cudaMalloc (Y) failed!\n");
 		goto Error;
 	}
+
 	cudaStatus = cudaMalloc((void**)&dev_I, host_p * sizeof(u32));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc (I) failed!\n");
 		goto Error;
 	}
+
 	cudaStatus = cudaMalloc((void**)&dev_k, sizeof(u32));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc (k) failed!\n");
+		goto Error;
+	}
+
+	cudaStatus = cudaMalloc((void**)&dev_phi, sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc (phi) failed!\n");
 		goto Error;
 	}
 
@@ -261,42 +270,22 @@ __host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, co
 		fprintf(stderr, "cudaMemcpy (Y) failed!\n");
 		goto Error;
 	}
-
+	
 	// Launch the kernel function on the GPU with one thread for each element.
-	pass_kernel<<<1, 1>>>(dev_X, dev_Y, dev_I, host_n, host_p, host_par, dev_k);
+	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_k, dev_phi, host_n, host_p, host_par);
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		fprintf(stderr, "(pass_kernel) Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 		goto Error;
 	}
 	
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
+		fprintf(stderr, "(pass_kernel) cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
 		goto Error;
-	}
-
-	//system("pause");
-	for(u32 i = 0; i < host_par.nI; i++) {
-		//printf("iteration = %d\n", i);
-		pass_find_best<<<1, 1>>>(i);
-		// Check for any errors launching the kernel.
-		cudaStatus = cudaGetLastError();
-		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-			goto Error;
-		}
-	
-		// cudaDeviceSynchronize waits for the kernel to finish, and returns any errors encountered during the launch.
-		cudaStatus = cudaDeviceSynchronize();
-		if (cudaStatus != cudaSuccess) {
-			fprintf(stderr, "cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
-			goto Error;
-		}
-		//system("pause");
 	}
 
 	// Copy output vector from GPU buffer to host memory.
@@ -307,9 +296,16 @@ __host__ u32 pass_host(const float* host_X, const float* host_Y, u32* host_I, co
 	}
 
 	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(&host_k, dev_k, sizeof(u32), cudaMemcpyDeviceToHost);
+	cudaStatus = cudaMemcpy(host_k, dev_k, sizeof(u32), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy (k) failed!\n");
+		goto Error;
+	}
+
+	// Copy output vector from GPU buffer to host memory.
+	cudaStatus = cudaMemcpy(host_phi, dev_phi, sizeof(float), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy (phi) failed!\n");
 		goto Error;
 	}
 
@@ -318,146 +314,135 @@ Error:
 	cudaFree(dev_Y);
 	cudaFree(dev_I);
 	cudaFree(dev_k);
-	return host_k;
 }
 
 
 /**
- * PaSS kernel function
+ * PaSS kernel initialize function
  *
- * @param array_X the matrix X
- * @param array_Y the vector Y
+ * @param host_X the matrix X
+ * @param host_Y the vector Y
+ * @param host_I the index I
+ * @param host_k length of I
+ * @param host_phi the value phi
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
  * @param host_par the parameter data
  */
-__global__ void pass_kernel(const float* array_X, const float* array_Y, u32* array_I, const u32 host_n, const u32 host_p, const Parameter host_par, u32* k) {
+__global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Parameter host_par) {
 	// Initialize Random Seed
 	curand_init(clock64(), 0, 0, &s);
 
 	// Declare variables
-	n = host_n;
-	p = host_p;
-	par = host_par;
-	X = new mat(n, p);
-	Y = new vec(n);
-	Phi = new vec(par.nP);
-	data = new Data[par.nP];
+	u32 id = threadIdx.x;
 	u32 i, j;
+	Data* data = new Data;
+	float phi_old;
 	
-	// Copy X and Y from array to matrix
-	for(j = 0; j < p; j++) {
-		for(i = 0; i < n; i++) {
-			X->col[j]->e[i] = array_X[i*p + j];
+	if(id == 0) {
+		// Declare variables
+		n = host_n;
+		p = host_p;
+		par = host_par;
+		X = new mat(n, p);
+		Y = new vec(n);
+		Index_best = new idx(p);
+		phi_best = host_phi;
+		phi_all = new float[par.nP];	
+	
+		// Copy X and Y from array to matrix
+		for(u32 i = 0; i < n; i++) {
+			for(j = 0; j < p; j++) {
+				X->col[j]->e[i] = host_X[i*p + j];
+			}
+			Y->e[i] = host_Y[i];
 		}
-	}
-	for(u32 i = 0; i < n; i++) {
-		Y->e[i] = array_Y[i];
 	}
 
-	// Set Random Initial
-	bool isRandInitial = false;
-	
-	// Compute Correct Criterion
-	Data data_T;
-	data_T.stat = init;
-	pass_update_cri(&data_T, 0);
-	printf("Phi = %8.3f, Index = ", data_T.phi); print(data_T.Index);
-	data_T.stat = forw;
-	for(u32 ii = 1; ii < 10; ii++) {
-		pass_update_cri(&data_T, ii);
-		printf("Phi = %8.3f, Index = ", data_T.phi); print(data_T.Index);
-		
-	}
-	printf("Beta = "); print(data_T.Beta);
 	// Initialize Particles
-	if(isRandInitial || p < par.nP) {
-		for(j = 0; j < par.nP; j++) {
-			//printf("particle = %d\n", j);
-			data[j].stat = init;
-			pass_update_cri(&data[j], curand(&s) % p);
-			Phi->e[j] = data[j].phi;
-			data[j].stat = forw;
-		}
-	}
-	else {
+	data->stat = init;
+	if(p < par.nP) {
+		pass_update_cri(data, curand(&s) % p);
+	} else {
 		vec* C = new vec(p);
 		idx* I = new idx(p);
 		mul(C, Y, X);
-		sort_index(I, C);
-		for(j = 0; j < par.nP; j++) {
-			//printf("particle = %d\n", j);
-			data[j].stat = init;
-			pass_update_cri(&data[j], I->e[j]);
-			Phi->e[j] = data[j].phi;
-			data[j].stat = forw;
+		for(i = 0; i < C->n; i++) {
+			C->e[i] = abs(C->e[i]);
 		}
+		sort_index_descend(I, C);
+		data->stat = init;
+		pass_update_cri(data, I->e[id]);
 		delete C;
 		delete I;
 	}
-	
+	phi_old = data->phi;
+	data->stat = forw;
+
 	// Choose Global Best
-	data_best_phi = data[0].phi;
-	data_best_Index = data[0].Index;
-
-	// Find Best Data
-	//for(u32 i = 0; i < par.nI; i++) {
-	//	for(u32 j = 0; j < par.nP; j++) {
-	//		pass_update_fb(&data[j]);
-	//		if(data_best_phi > data[j].phi) {
-	//			data_best_phi = data[j].phi;
-	//			data_best_Index = data[j].Index;
-	//		}
-	//		if(data[j].phi - Phi->e[j] > 0) {
-	//			data[j].stat = (Stat)(-data[j].stat);
-	//		}
-	//		if(data[j].Index->n <= 1) {
-	//			data[j].stat = forw;
-	//		}
-	//		if(data[j].Index->n >= p - 5) {
-	//			data[j].stat = back;
-	//		}
-	//		Phi->e[j] = data[j].phi;
-	//	}
-	//	printf("phi = %f  Index = ", data_best_phi);
-	//	print(data_best_Index);
-	//}
-	
-	//*k = data_best_Index->n;
-	//for(u32 i = 0; i < *k; i++) {
-	//	array_I[i] = data_best_Index->e[i];
-	//}
-
-	//delete X;
-	//delete Y;
-	//delete Phi;
-	//delete data;
-	
-	*k = 0;
-}
-
-// PaSS Find Best
-__global__ void pass_find_best(u32 const i) {
-	for(u32 j = 0; j < par.nP; j++) {
-		//printf("particle = %d\n", j);
-		pass_update_fb(&data[j]);
-		if(data_best_phi > data[j].phi) {
-			data_best_phi = data[j].phi;
-			data_best_Index = data[j].Index;
-		}
-		if(data[j].phi - Phi->e[j] > 0) {
-			data[j].stat = (Stat)(-data[j].stat);
-		}
-		if(data[j].Index->n <= 1) {
-			data[j].stat = forw;
-		}
-		if(data[j].Index->n >= p - 5) {
-			data[j].stat = back;
-		}
-		Phi->e[j] = data[j].phi;
+	if(id == 0) {
+		*phi_best = data->phi;
+		put(Index_best, data->Index);
 	}
-	printf("phi = %f  Index = ", data_best_phi);
-	print(data_best_Index);
+	__syncthreads();
+	
+	
+	// Find Best Data
+	for(u32 i = 0; i < par.nI; i++) {
+		// Update data
+		pass_update_fb(data);
+		if(data->phi - phi_old > 0) {
+			data->stat = (Stat)(-data->stat);
+		}
+		if(data->Index->n <= 1) {
+			data->stat = forw;
+		}
+		if(data->Index->n >= p - 5) {
+			data->stat = back;
+		}
+		phi_old = data->phi;
+
+		// Choose Global Best
+		__syncthreads();
+		phi_all[id] = data->phi;
+		__syncthreads();
+		if(id == 0) {
+			id_best = (u32)(-1);
+			for(j = 0; j < par.nP; j++) {
+				if(phi_all[j] > *phi_best) {
+					id_best = j;
+				}
+			}
+		}
+		__syncthreads();
+		if(id == id_best) {
+			*phi_best = data->phi;
+			put(Index_best, data->Index);
+		}
+		__syncthreads();
+	}
+	
+	
+	if(id == 0) {
+		// Declare variables
+		n = host_n;
+		p = host_p;
+		par = host_par;
+		X = new mat(n, p);
+		Y = new vec(n);
+		Index_best = new idx(p);
+		phi_best = host_phi;
+		phi_all = new float[par.nP];	
+	
+		// Copy Index_best from index to array
+		for(j = 0; j < Index_best->n; j++) {
+			Index_best->e[j] = host_I[j];
+		}
+		*host_k = Index_best->n;
+
+		printf("phi = %f  Index = ", *phi_best);
+		print(Index_best);
+	}
 }
 
 
@@ -469,13 +454,13 @@ __device__ bool pass_update_fb(Data* data) {
 	switch(data->stat) {
 	case forw: // Forward
 		{
-			idx* Index_B = new idx(data_best_Index->n);
+			idx* Index_B = new idx(Index_best->n);
 			idx* Index_C = new idx(data->Index->n);
 			idx* Index_D = new idx(Index_B->n);
 			idx* Index_R = new idx(p - Index_C->n);
 
 			// Sort Index_B
-			copy(Index_B, data_best_Index);
+			copy(Index_B, Index_best);
 			sort_ascend(Index_B);
 			
 			// Sort Index_C
@@ -489,10 +474,10 @@ __device__ bool pass_update_fb(Data* data) {
 			complement(Index_R, Index_C, p);
 
 			// Determine the index to add
-			if(curand_uniform(&s) < par.pfg && Index_D->n > 0){
+			if(curand_uniform(&s) < par.pfg && Index_D->n > 0) {
 				index = Index_D->e[curand(&s) % Index_D->n];
 			}
-			else if(curand_uniform(&s) < par.pfl/(par.pfl+par.pfr)){
+			else if(curand_uniform(&s) < par.pfl/(par.pfl+par.pfr)) {
 				float phi_max = -1, phi_temp;
 				for(u32 i = 0; i < Index_R->n; i++) {
 					inner(&phi_temp, data->R, X->col[Index_R->e[i]]);
@@ -515,11 +500,11 @@ __device__ bool pass_update_fb(Data* data) {
 	case back: // Backward
 		{
 			// Determine the index to remove
-			if(curand_uniform(&s)< par.pbl){
+			if(curand_uniform(&s)< par.pbl) {
 				mat* B = new mat(data->X->n_row, data->X->n_col);
 				vec* C = new vec(data->X->n_col);
 				u32 ii;
-				for(u32 i = 0; i < B->n_col; i++){
+				for(u32 i = 0; i < B->n_col; i++) {
 					mul(B->col[i], data->X->col[i], data->Beta->e[i]);
 					add(B->col[i], B->col[i], data->R);
 				}
