@@ -73,9 +73,8 @@ __device__ mat* X;
 __device__ vec* Y;
 __device__ Criterion cri = EBIC;
 __device__ Parameter par;
-__device__ float* phi_best;
-__device__ float* phi_all;
 __device__ idx* Index_best;
+__device__ float* phi_all;
 __device__ curandState s;
 
 // Functions
@@ -107,7 +106,7 @@ int main() {
 	pass_host(host_X, host_Y, host_I, &host_k, &host_phi, host_n, host_p, host_par);
 	
 	// Display data
-	printf("phi = %f\n", host_phi);
+	printf("phi = %f\nIndex = ", host_phi);
 	for(u32 i = 0; i < host_k; i++) {
 		printf("%d ", host_I[i]);
 	}
@@ -347,7 +346,6 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		X = new mat(n, p);
 		Y = new vec(n);
 		Index_best = new idx(p);
-		phi_best = host_phi;
 		phi_all = new float[par.nP];	
 	
 		// Copy X and Y from array to matrix
@@ -382,7 +380,7 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 
 	// Choose Global Best
 	if(id == 0) {
-		*phi_best = data->phi;
+		*host_phi = data->phi;
 		put(Index_best, data->Index);
 	}
 	__syncthreads();
@@ -404,21 +402,21 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		phi_old = data->phi;
 
 		// Choose Global Best
-		__syncthreads();
 		phi_all[id] = data->phi;
 		__syncthreads();
 		if(id == 0) {
 			id_best = (u32)(-1);
 			for(j = 0; j < par.nP; j++) {
-				if(phi_all[j] > *phi_best) {
+				if(phi_all[j] > *host_phi) {
 					id_best = j;
 				}
 			}
 		}
 		__syncthreads();
 		if(id == id_best) {
-			*phi_best = data->phi;
+			*host_phi = data->phi;
 			put(Index_best, data->Index);
+			printf("id = %d phi = %d\n", id, *host_phi);
 		}
 		__syncthreads();
 	}
@@ -436,9 +434,6 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		delete Y;
 		delete Index_best;
 		delete phi_all;
-
-		printf("phi = %f  Index = ", *phi_best);
-		print(Index_best);
 	}
 }
 
