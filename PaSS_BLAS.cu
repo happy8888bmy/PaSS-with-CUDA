@@ -261,17 +261,14 @@ namespace pass_blas {
 
 
 	/**
-	 * Put a index in another index.
+	 * Put a index in another index. (Note that this function won't check the length if z)
 	 *
 	 * @param z the target index.
 	 * @param x the input index.
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool put(idx* z, const idx* x) {
-		if(z->n < x->n) {
-			printf("(put: index) not aligned!\n");
-			return false;
-		}
+		z->n = x->n;
 		memcpy(z->e, x->e, x->n * sizeof(u32));
 		return true;
 	}
