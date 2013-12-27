@@ -246,13 +246,30 @@ namespace pass_blas {
 	/**
 	 * Copy a index.
 	 *
-	 * @param x the new index.
-	 * @param z the original index.
+	 * @param z the new index.
+	 * @param x the original index.
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool copy(idx* z, const idx* x) {
 		if(z->n != x->n) {
 			printf("(copy: index) not aligned!\n");
+			return false;
+		}
+		memcpy(z->e, x->e, x->n * sizeof(u32));
+		return true;
+	}
+
+
+	/**
+	 * Put a index in another index.
+	 *
+	 * @param z the target index.
+	 * @param x the input index.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ bool put(idx* z, const idx* x) {
+		if(z->n < x->n) {
+			printf("(put: index) not aligned!\n");
 			return false;
 		}
 		memcpy(z->e, x->e, x->n * sizeof(u32));
@@ -951,9 +968,9 @@ namespace pass_blas {
 	 * @param v the vector (will be sorted).
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sort_index(idx* z, vec* v) {
+	__host__ __device__ bool sort_index_ascend(idx* z, vec* v) {
 		if(z->n != v->n) {
-			printf("(sort_index) not aligned!\n");
+			printf("(sort_index_ascend) not aligned!\n");
 			return false;
 		}
 		for(u32 i = 0; i < v->n; i++) {
@@ -967,6 +984,42 @@ namespace pass_blas {
 		for(u32 i = v->n-1; i > 0; i--) {
 			for(u32 j = 0; j < i; j++) {
 				if(v->e[j] > v->e[j+1]) {
+					vtemp = v->e[j];
+					v->e[j] = v->e[j+1];
+					v->e[j+1] = vtemp;
+					ztemp = z->e[j];
+					z->e[j] = z->e[j+1];
+					z->e[j+1] = ztemp;
+				}
+			}
+		}
+		return true;
+	}
+
+
+	/**
+	 * Sort index of a vector in descending order
+	 *
+	 * @param z the sorted index.
+	 * @param v the vector (will be sorted).
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ bool sort_index_descend(idx* z, vec* v) {
+		if(z->n != v->n) {
+			printf("(sort_index_descend) not aligned!\n");
+			return false;
+		}
+		for(u32 i = 0; i < v->n; i++) {
+			z->e[i] = i;
+		}
+		if(v->n < 2) {
+			return true;
+		}
+		float vtemp;
+		u32 ztemp;
+		for(u32 i = v->n-1; i > 0; i--) {
+			for(u32 j = 0; j < i; j++) {
+				if(v->e[j] < v->e[j+1]) {
 					vtemp = v->e[j];
 					v->e[j] = v->e[j+1];
 					v->e[j+1] = vtemp;
