@@ -111,7 +111,7 @@ int main() {
 	u32 host_n = 8;
 	u32 host_p = 256;
 	Criterion host_cri = EBIC;
-	Parameter host_par = {16, 128, .8f, .1f, .1f, .9f, .1f};
+	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
 	float* host_X = (float*)malloc(host_n * host_p * sizeof(float));
 	float* host_Y = (float*)malloc(host_n * sizeof(float));
 	u32* host_I = (u32*)malloc(host_p * sizeof(u32));
@@ -459,6 +459,8 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 			host_I[j] = Index_best->e[j];
 		}
 		*host_k = Index_best->n;
+		printf("phi = %f\nk = %d\nIndex = ", *host_phi, *host_k);
+		print(Index_best);
 
 		// Delete variables
 		delete X;
