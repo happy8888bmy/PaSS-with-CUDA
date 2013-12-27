@@ -425,21 +425,17 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 	
 	
 	if(id == 0) {
-		// Declare variables
-		n = host_n;
-		p = host_p;
-		par = host_par;
-		X = new mat(n, p);
-		Y = new vec(n);
-		Index_best = new idx(p);
-		phi_best = host_phi;
-		phi_all = new float[par.nP];	
-	
 		// Copy Index_best from index to array
 		for(j = 0; j < Index_best->n; j++) {
 			Index_best->e[j] = host_I[j];
 		}
 		*host_k = Index_best->n;
+
+		// Delete variables
+		delete X;
+		delete Y;
+		delete Index_best;
+		delete phi_all;
 
 		printf("phi = %f  Index = ", *phi_best);
 		print(Index_best);
