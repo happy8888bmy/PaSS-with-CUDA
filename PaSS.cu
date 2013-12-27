@@ -62,6 +62,24 @@ namespace pass{
 		Stat stat;  /**< the status */
 		vec* Theta; /**< the vector theta */
 		mat* X;     /**< the data we chosen */
+
+		__host__ __device__ Data(u32 n) {
+			this->Beta = new vec(1);
+			this->Index = new idx(1);
+			this->InvA = new mat(1, 1);
+			this->R = new vec(n);
+			this->Theta = new vec(1);
+			this->X = new mat(n, 1);
+		}
+
+		__host__ __device__ ~Data() {
+			delete this->Beta;
+			delete this->Index;
+			delete this->InvA;
+			delete this->R;
+			delete this->Theta;
+			delete this->X;
+		}
 	};
 }
 using namespace pass;
@@ -71,7 +89,7 @@ using namespace pass;
 __device__ u32 n, p, id_best;
 __device__ mat* X;
 __device__ vec* Y;
-__device__ Criterion cri = EBIC;
+__device__ Criterion cri;
 __device__ Parameter par;
 __device__ idx* Index_best;
 __device__ float* phi_all;
@@ -79,8 +97,8 @@ __device__ curandState s;
 
 // Functions
 void pass_init(float*, float*, const u32, const u32);
-void pass_host(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Parameter);
-__global__ void pass_kernel(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Parameter);
+void pass_host(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Criterion, const Parameter);
+__global__ void pass_kernel(const float*, const float*, u32*, u32*, float*, const u32, const u32, const Criterion, const Parameter);
 __device__ bool pass_update_fb(Data*);
 __device__ bool pass_update_cri(Data*, const u32);
 
@@ -90,9 +108,10 @@ __device__ bool pass_update_cri(Data*, const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 20;
-	u32 host_p = 16;
-	Parameter host_par = {16, 32, .8f, .1f, .1f, .9f, .1f};
+	u32 host_n = 8;
+	u32 host_p = 256;
+	Criterion host_cri = EBIC;
+	Parameter host_par = {16, 128, .8f, .1f, .1f, .9f, .1f};
 	float* host_X = (float*)malloc(host_n * host_p * sizeof(float));
 	float* host_Y = (float*)malloc(host_n * sizeof(float));
 	u32* host_I = (u32*)malloc(host_p * sizeof(u32));
@@ -103,7 +122,7 @@ int main() {
 	pass_init(host_X, host_Y, host_n, host_p);
 		
 	// Run PaSS
-	pass_host(host_X, host_Y, host_I, &host_k, &host_phi, host_n, host_p, host_par);
+	pass_host(host_X, host_Y, host_I, &host_k, &host_phi, host_n, host_p, host_cri, host_par);
 	
 	// Display data
 	printf("phi = %f\nIndex = ", host_phi);
@@ -208,9 +227,10 @@ __host__ void pass_init(float* host_X, float* host_Y, const u32 host_n, const u3
  * @param host_phi the value phi
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
- * @param host_par the parameter data
+ * @param host_cri the criterion
+ * @param host_par the parameter value
  */
-__host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Parameter host_par) {
+__host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Criterion host_cri, const Parameter host_par) {
 	// Declare variables
 	float* dev_X = 0;
 	float* dev_Y = 0;
@@ -271,26 +291,19 @@ __host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u
 	}
 	
 	// Launch the kernel function on the GPU with one thread for each element.
-	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_k, dev_phi, host_n, host_p, host_par);
+	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_k, dev_phi, host_n, host_p, host_cri, host_par);
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "(pass_kernel) Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 		goto Error;
 	}
 	
 	// cudaDeviceSynchronize waits for the kernel to finish, and returns any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "(pass_kernel) cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
-		goto Error;
-	}
-
-	// Copy output vector from GPU buffer to host memory.
-	cudaStatus = cudaMemcpy(host_I, dev_I, host_p * sizeof(u32), cudaMemcpyDeviceToHost);
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy (I) failed!\n");
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d!\n", cudaStatus);
 		goto Error;
 	}
 
@@ -298,6 +311,13 @@ __host__ void pass_host(const float* host_X, const float* host_Y, u32* host_I, u
 	cudaStatus = cudaMemcpy(host_k, dev_k, sizeof(u32), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMemcpy (k) failed!\n");
+		goto Error;
+	}
+
+	// Copy output vector from GPU buffer to host memory.
+	cudaStatus = cudaMemcpy(host_I, dev_I, *host_k * sizeof(u32), cudaMemcpyDeviceToHost);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy (I) failed!\n");
 		goto Error;
 	}
 
@@ -326,13 +346,14 @@ Error:
  * @param host_phi the value phi
  * @param host_n the number of rows in X
  * @param host_p the number of columns in X
- * @param host_par the parameter data
+ * @param host_cri the criterion
+ * @param host_par the parameter value
  */
-__global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Parameter host_par) {
+__global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Criterion host_cri, const Parameter host_par) {
 	// Declare variables
 	u32 id = threadIdx.x;
 	u32 i, j;
-	Data* data = new Data;
+	Data* data = new Data(host_n);
 	float phi_old;
 	
 	if(id == 0) {
@@ -342,6 +363,7 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		// Declare variables
 		n = host_n;
 		p = host_p;
+		cri = host_cri;
 		par = host_par;
 		X = new mat(n, p);
 		Y = new vec(n);
@@ -359,19 +381,26 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 	__syncthreads();
 
 	// Initialize Particles
-	data->stat = init;
-	if(p < par.nP) {
-		pass_update_cri(data, curand(&s) % p);
-	} else {
-		vec* C = new vec(p);
-		idx* I = new idx(p);
+	__shared__ vec* C;
+	__shared__ idx* I;
+	if(p >= par.nP && id == 0) {
+		C = new vec(p);
+		I = new idx(p);
 		mul(C, Y, X);
 		for(i = 0; i < C->n; i++) {
 			C->e[i] = abs(C->e[i]);
 		}
 		sort_index_descend(I, C);
-		data->stat = init;
+	}
+	__syncthreads();
+
+	data->stat = init;
+	if(p >= par.nP) {
 		pass_update_cri(data, I->e[id]);
+	} else {
+		pass_update_cri(data, curand(&s) % p);
+	}
+	if(p >= par.nP && id == 0) {
 		delete C;
 		delete I;
 	}
@@ -416,15 +445,16 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_
 		__syncthreads();
 		if(id == id_best) {
 			put(Index_best, data->Index);
-			printf("iter = %3d id = %3d phi = %f\n", i, id, *host_phi);
 		}
 		__syncthreads();
 	}
 	
-	
+	// Delete variables
+	delete data;
+
 	if(id == 0) {
-		printf("iter = %3d id = %3d phi = %f\n", i, id, *host_phi);
 		// Copy Index_best from index to array
+		sort_ascend(Index_best);
 		for(j = 0; j < Index_best->n; j++) {
 			host_I[j] = Index_best->e[j];
 		}
@@ -531,24 +561,17 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	switch(data->stat) {
 	case init: // Initial
 		{
-			data->X = new mat(n, 1);
 			copy(data->X->col[0], Xnew);
 
-			data->InvA = new mat(1, 1);
 			float a;
 			inner(&a, Xnew);
 			data->InvA->col[0]->e[0] = 1 / a;
 
-			data->Theta = new vec(1);
 			inner(&(data->Theta->e[0]), Xnew, Y);
 
-			data->Beta = new vec(1);
 			mul(data->Beta, data->InvA, data->Theta);
 
-			data->Index = new idx(1);
 			data->Index->e[0] = index;
-
-			data->R = new vec(n);
 
 			k = 1;
 		}
