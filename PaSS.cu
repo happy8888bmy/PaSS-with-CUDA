@@ -349,7 +349,7 @@ Error:
  * @param host_cri the criterion
  * @param host_par the parameter value
  */
-__global__ void pass_kernel(const float* host_X, const float* host_Y, u32* host_I, u32* host_k, float* host_phi, const u32 host_n, const u32 host_p, const Criterion host_cri, const Parameter host_par) {
+__global__ void pass_kernel(const float* host_X, const float* host_Y, u32* const host_I, u32* const host_k, float* const host_phi, const u32 host_n, const u32 host_p, const Criterion host_cri, const Parameter host_par) {
 	// Declare variables
 	u32 id = threadIdx.x;
 	u32 i, j;
