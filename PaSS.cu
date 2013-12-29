@@ -63,13 +63,17 @@ namespace pass{
 		vec* Theta; /**< the vector theta */
 		mat* X;     /**< the data we chosen */
 
-		__host__ __device__ Data(u32 n) {
+		__host__ __device__ Data(u32 n, u32 p) {
 			this->Beta = new vec(1);
 			this->Index = new idx(1);
 			this->InvA = new mat(1, 1);
 			this->R = new vec(n);
 			this->Theta = new vec(1);
-			this->X = new mat(n, 1);
+			this->X = (mat*)malloc(sizeof(mat*));
+
+			this->X->n_row = n;
+			this->X->n_col = 1;
+			this->X->col = (vec**)malloc(p * sizeof(vec*));
 		}
 
 		__host__ __device__ ~Data() {
@@ -78,7 +82,9 @@ namespace pass{
 			delete this->InvA;
 			delete this->R;
 			delete this->Theta;
-			delete this->X;
+
+			free(this->X->col);
+			free(this->X);
 		}
 	};
 }
@@ -94,6 +100,8 @@ __device__ Parameter par;
 __device__ idx* Index_best;
 __device__ float* phi_all;
 __device__ curandState s;
+__device__ vec* CC;
+__device__ idx* II;
 
 // Functions
 void pass_init(float*, float*, const u32, const u32);
@@ -110,7 +118,7 @@ int main() {
 	// Declare variables
 	u32 host_n = 8;
 	u32 host_p = 256;
-	Criterion host_cri = EBIC;
+	Criterion host_cri = HDBIC;
 	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
 	float* host_X = (float*)malloc(host_n * host_p * sizeof(float));
 	float* host_Y = (float*)malloc(host_n * sizeof(float));
@@ -353,8 +361,10 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* const
 	// Declare variables
 	u32 id = threadIdx.x;
 	u32 i, j;
-	Data* data = new Data(host_n);
+	Data* data = new Data(host_n, host_p);
 	float phi_old;
+
+	u32 k_max = 0;
 	
 	if(id == 0) {
 		// Initialize Random Seed
@@ -381,28 +391,26 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* const
 	__syncthreads();
 
 	// Initialize Particles
-	__shared__ vec* C;
-	__shared__ idx* I;
 	if(p >= par.nP && id == 0) {
-		C = new vec(p);
-		I = new idx(p);
-		mul(C, Y, X);
-		for(i = 0; i < C->n; i++) {
-			C->e[i] = abs(C->e[i]);
+		CC = new vec(p);
+		II = new idx(p);
+		mul(CC, Y, X);
+		for(i = 0; i < CC->n; i++) {
+			CC->e[i] = abs(CC->e[i]);
 		}
-		sort_index_descend(I, C);
+		sort_index_descend(II, CC);
 	}
 	__syncthreads();
 
 	data->stat = init;
 	if(p >= par.nP) {
-		pass_update_cri(data, I->e[id]);
+		pass_update_cri(data, II->e[id]);
 	} else {
 		pass_update_cri(data, curand(&s) % p);
 	}
 	if(p >= par.nP && id == 0) {
-		delete C;
-		delete I;
+		delete CC;
+		delete II;
 	}
 	phi_old = data->phi;
 	data->stat = forw;
@@ -447,6 +455,9 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* const
 			put(Index_best, data->Index);
 		}
 		__syncthreads();
+
+		if(data->Index->n > k_max)
+			k_max = data->Index->n;
 	}
 	
 	// Delete variables
@@ -459,8 +470,9 @@ __global__ void pass_kernel(const float* host_X, const float* host_Y, u32* const
 			host_I[j] = Index_best->e[j];
 		}
 		*host_k = Index_best->n;
-		printf("phi = %f\nk = %d\nIndex = ", *host_phi, *host_k);
-		print(Index_best);
+
+		//printf("phi = %f\nk = %d\nIndex = ", *host_phi, *host_k);
+		//print(Index_best);
 
 		// Delete variables
 		delete X;
@@ -563,7 +575,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	switch(data->stat) {
 	case init: // Initial
 		{
-			copy(data->X->col[0], Xnew);
+			data->X->col[0] = Xnew;
 
 			float a;
 			inner(&a, Xnew);
@@ -599,7 +611,12 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 
 			insert(D, -1.0f);
 
-			insert_col(data->X, Xnew);
+			data->X->n_col++;
+			//vec** temp = (vec**)malloc((k+1) * sizeof(vec*));
+			//memcpy(temp, data->X->col, k * sizeof(vec*));
+			//free(data->X->col);
+			//data->X->col = temp;
+			data->X->col[k] = Xnew;
 
 			mul(InvAtemp, D, D);
 			mul(InvAtemp, InvAtemp, alpha);
@@ -640,7 +657,12 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 				swap(data->Index, ii, k);
 			}
 
-			shed_col(data->X);
+			data->X->n_col--;
+			//vec** temp = (vec**)malloc(k * sizeof(vec*));
+			//memcpy(temp, data->X->col, k * sizeof(vec*));
+			//free(data->X->col);
+			//data->X->col = temp;
+
 			shed(data->Theta);
 			shed(data->Index);
 
