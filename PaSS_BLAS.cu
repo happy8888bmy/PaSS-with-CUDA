@@ -49,13 +49,13 @@ namespace pass_blas {
 		 * Construct a vector and fill it with given value.
 		 *
 		 * @param n the length of the vector.
-		 * @param d the value of entries.
+		 * @param f the value of entries.
 		 */
-		__host__ __device__ vec(const u32 n, const float d) {
+		__host__ __device__ vec(const u32 n, const float f) {
 			this->n = n;
 			this->e = (float*)malloc(n * sizeof(float));
 			for(u32 i = 0; i < n; i++) {
-				this->e[i] = d;
+				this->e[i] = f;
 			}
 		}
 		
@@ -96,14 +96,14 @@ namespace pass_blas {
 		 *
 		 * @param p the number of rows of the vector.
 		 * @param q the number of columns of the vector.
-		 * @param d the value of entries.
+		 * @param f the value of entries.
 		 */
-		__host__ __device__ mat(const u32 p, const u32 q, const float d) {
+		__host__ __device__ mat(const u32 p, const u32 q, const float f) {
 			this->n_row = p;
 			this->n_col = q;
 			this->col = (vec**)malloc(q * sizeof(vec*));
 			for(u32 i = 0; i < q; i++) {
-				this->col[i] = new vec(p, d);
+				this->col[i] = new vec(p, f);
 			}
 		}
 		
@@ -140,13 +140,13 @@ namespace pass_blas {
 		 * Construct a index and fill it with given value.
 		 *
 		 * @param n the length of the index.
-		 * @param d the value of entries.
+		 * @param f the value of entries.
 		 */
-		__host__ __device__ idx(const u32 n, const u32 d) {
+		__host__ __device__ idx(const u32 n, const u32 f) {
 			this->n = n;
 			this->e = (u32*)malloc(n * sizeof(u32));
 			for(u32 i = 0; i < n; i++) {
-				this->e[i] = d;
+				this->e[i] = f;
 			}
 		}
 		
@@ -359,33 +359,33 @@ namespace pass_blas {
 
 
 	/**
-	 * u = d*v.
+	 * u = f*v.
 	 *
 	 * @param u the product vector.
 	 * @param v the multiplier vector.
-	 * @param d the multiplicand number.
+	 * @param f the multiplicand number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool mul(vec* u, const vec* v, const float d) {
+	__host__ __device__ bool mul(vec* u, const vec* v, const float f) {
 		for(u32 i = 0; i < v->n; i++) {
-			u->e[i] = v->e[i] * d;
+			u->e[i] = v->e[i] * f;
 		}
 		return true;
 	}
 
 
 	/**
-	 * c = d*a.
+	 * c = f*a.
 	 *
 	 * @param c the product matrix.
 	 * @param a the multiplier vector.
-	 * @param d the multiplicand number.
+	 * @param f the multiplicand number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool mul(mat* c, const mat* a, const float d) {
+	__host__ __device__ bool mul(mat* c, const mat* a, const float f) {
 		for(u32 i = 0; i < a->n_col; i++) {
 			for(u32 j = 0; j < a->n_row; j++) {
-				c->col[i]->e[j] = a->col[i]->e[j] * d;
+				c->col[i]->e[j] = a->col[i]->e[j] * f;
 			}
 		}
 		return true;
@@ -461,37 +461,37 @@ namespace pass_blas {
 
 
 	/**
-	 * d = sum(v.*v).
+	 * f = sum(v.*v).
 	 *
-	 * @param d the product number.
+	 * @param f the product number.
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool inner(float* d, const vec* v) {
-		*d = 0;
+	__host__ __device__ bool inner(float* f, const vec* v) {
+		*f = 0;
 		for(u32 i = 0; i < v->n; i++) {
-			*d += v->e[i] * v->e[i];
+			*f += v->e[i] * v->e[i];
 		}
 		return true;
 	}
 
 
 	/**
-	 * d = sum(v.*w).
+	 * f = sum(v.*w).
 	 *
 	 * @param v the multiplicand vector.
 	 * @param w the multiplier vector.
-	 * @param d the product number.
+	 * @param f the product number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool inner(float* d, const vec* v, const vec* w) {
+	__host__ __device__ bool inner(float* f, const vec* v, const vec* w) {
 		if(v->n != w->n) {
 			printf("(inner: vector) not aligned!\n");
 			return false;
 		}
-		*d = 0;
+		*f = 0;
 		for(u32 i = 0; i < v->n; i++) {
-			*d += v->e[i] * w->e[i];
+			*f += v->e[i] * w->e[i];
 		}
 		return true;
 	}
@@ -543,15 +543,15 @@ namespace pass_blas {
 
 
 	/**
-	 * d = norm(v, 2).
+	 * f = norm(v, 2).
 	 *
-	 * @param d the Euclidean norm.
+	 * @param f the Euclidean norm.
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool norm(float* d, const vec* v) {
-		inner(d, v);
-		*d = sqrt(*d);
+	__host__ __device__ bool norm(float* f, const vec* v) {
+		inner(f, v);
+		*f = sqrt(*f);
 		return true;
 	}
 
@@ -560,16 +560,16 @@ namespace pass_blas {
 	 * Add a new entry at the end.
 	 *
 	 * @param v the vector.
-	 * @param d the new entry.
+	 * @param f the new entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool insert(vec* v, const float d) {
+	__host__ __device__ bool insert(vec* v, const float f) {
 		v->n++;
 		float* temp = (float*)malloc(v->n * sizeof(float));
 		memcpy(temp, v->e, (v->n-1) * sizeof(float));
 		free(v->e);
 		v->e = temp;
-		v->e[v->n-1] = d;
+		v->e[v->n-1] = f;
 		return true;
 	}
 
@@ -596,10 +596,10 @@ namespace pass_blas {
 	 * Add a new row and a new column at the end.
 	 *
 	 * @param a the matrix.
-	 * @param d the number.
+	 * @param f the number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool insert(mat* a, const float d) {
+	__host__ __device__ bool insert(mat* a, const float f) {
 		a->n_row++;
 		a->n_col++;
 		float* ftemp;
@@ -609,13 +609,13 @@ namespace pass_blas {
 			memcpy(ftemp, a->col[i]->e, (a->n_row-1) * sizeof(float));
 			free(a->col[i]->e);
 			a->col[i]->e = ftemp;
-			a->col[i]->e[a->n_row-1] = d;
+			a->col[i]->e[a->n_row-1] = f;
 		}
 		vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
 		memcpy(temp, a->col, (a->n_col-1) * sizeof(vec*));
 		free(a->col);
 		a->col = temp;
-		a->col[a->n_col-1] = new vec(a->n_row, d);
+		a->col[a->n_col-1] = new vec(a->n_row, f);
 		return true;
 	}
 
@@ -676,16 +676,11 @@ namespace pass_blas {
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed(vec* v) {
-		if(v->n == 0) {
-			printf("(shed: vector) empty!\n");
+		if(v->n <= 1) {
+			printf("(shed: vector) too small!\n");
 			return false;
 		}
 		v->n--;
-		if(v->n == 0) {
-			free(v->e);
-			v->e = 0;
-			return true;
-		}
 		float* temp = (float*)malloc(v->n * sizeof(float));
 		memcpy(temp, v->e, v->n * sizeof(float));
 		free(v->e);
@@ -701,16 +696,11 @@ namespace pass_blas {
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool shed(idx* x) {
-		if(x->n == 0) {
-			printf("(shed: index) empty!\n");
+		if(x->n <= 1) {
+			printf("(shed: index) too small!\n");
 			return false;
 		}
 		x->n--;
-		if(x->n == 0) {
-			free(x->e);
-			x->e = 0;
-			return true;
-		}
 		u32* temp = (u32*)malloc(x->n * sizeof(u32));
 		memcpy(temp, x->e, x->n * sizeof(u32));
 		free(x->e);
@@ -737,7 +727,7 @@ namespace pass_blas {
 		x->n -= n;
 		if(x->n == 0) {
 			free(x->e);
-			x->e = 0;
+			x->e = NULL;
 			return true;
 		}
 		u32* temp = (u32*)malloc(x->n * sizeof(u32));
@@ -792,10 +782,10 @@ namespace pass_blas {
 			return false;
 		}
 		a->n_col--;
-		free(a->col[a->n_col]);
+		delete a->col[a->n_col];
 		if(a->n_col == 0) {
 			free(a->col);
-			a->col = 0;
+			a->col = NULL;
 			return true;
 		}
 		vec** temp = (vec**)malloc(a->n_col * sizeof(vec*));
@@ -905,10 +895,10 @@ namespace pass_blas {
 	 * @return whether this function has been executed successfully or not.
 	 */
 	__host__ __device__ bool find_min_index(u32* k, const vec* v) {
-		float d = FLT_MAX;
+		float f = FLT_MAX;
 		for(u32 j = 0; j < v->n; j++) {
-			if(v->e[j] < d) {
-				d = v->e[j];
+			if(v->e[j] < f) {
+				f = v->e[j];
 				*k = j;
 			}
 		}
@@ -1043,13 +1033,13 @@ namespace pass_blas {
 			printf("(complement) not aligned!\n");
 			return false;
 		}
-		u32 i, j, d;
-		for(i = 0, j = 0, d = 0; j < z->n; d++) {
-			if(i < x->n && d == x->e[i]) {
+		u32 i, j, f;
+		for(i = 0, j = 0, f = 0; j < z->n; f++) {
+			if(i < x->n && f == x->e[i]) {
 				i++;
 			}
 			else {
-				z->e[j] = d;
+				z->e[j] = f;
 				j++;
 			}
 		}
