@@ -100,11 +100,11 @@ int main() {
 	u32 host_p = 256;
 	Criterion host_cri = HDBIC;
 	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
-	mat* host_X = (mat*)malloc(((PASS_MAX_N+2)*host_p+2) * sizeof(mat));
+	mat* host_X = new mat[(PASS_MAX_N+2)*host_p+2];
 	init_mat(host_X, host_n, host_p, PASS_MAX_N, host_p);
-	vec* host_Y = (vec*)malloc((PASS_MAX_N+2) * sizeof(vec));
+	vec* host_Y = new vec[PASS_MAX_N+2];
 	init_vec(host_Y, host_n, PASS_MAX_N);
-	uvec* host_I = (uvec*)malloc((PASS_MAX_P+2) * sizeof(uvec));
+	uvec* host_I = new uvec[PASS_MAX_P+2];
 	init_uvec(host_I, 0, PASS_MAX_P);
 	float host_phi;
 
@@ -125,6 +125,9 @@ int main() {
 	print_vec(host_Y);
 	print_uvec(host_I);
 	system("pause");
+	delete[] host_X;
+	delete[] host_Y;
+	delete[] host_I;
 	return 0;
 }
 
@@ -147,8 +150,6 @@ __host__ void pass_init(mat* X, vec* Y) {
 	init_vec(Temp, p, p);
 	float temp;
 
-	printf("%f\n", n_ents(col(X, 5)));
-
 	// Generate X and Error using normal random
 	default_random_engine generator((u32)time(NULL));
 	normal_distribution<float> distribution;
@@ -157,11 +158,9 @@ __host__ void pass_init(mat* X, vec* Y) {
 			entry2(X, i, j) = distribution(generator);
 		}
 	}
-	for(i = 0; i < n_cols(X); i++) {
+	for(i = 0; i < n_cols(Error); i++) {
 		entry(Error, i) = distribution(generator);
 	}
-
-	printf("%f\n", n_ents(col(X, 5)));
 	
 	// Compute X and Y
 	entry(Beta, 0) = 3.0f;
@@ -184,12 +183,10 @@ __host__ void pass_init(mat* X, vec* Y) {
 		}
 	}
 	mul_vec(X_hat, X_hat, 1 / sqrt(2 * (float)q));
-	printf("%f\n", n_ents(col(X, 5)));
 	for(j = q; j < p; j++) {
 		mul_vec(col(X, j), col(X, j), .5f);
 		add_vec(col(X, j), col(X, j), X_hat);
 	}
-	printf("%f\n", n_ents(col(X, 5)));
 	mul_matvec(Y, X, Beta);
 	add_vec(Y, Y, Error);
 	
@@ -203,10 +200,11 @@ __host__ void pass_init(mat* X, vec* Y) {
 	norm_vec(&temp, Y);
 	mul_vec(Y, Y, 1/temp);
 
-	delete Beta;
-	delete X_hat;
-	delete Error;
-	delete Temp;
+	delete[] Beta;
+	delete[] X_hat;
+	delete[] Error;
+	delete[] Temp;
+
 }
 
 
