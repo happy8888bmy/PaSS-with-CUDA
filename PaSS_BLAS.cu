@@ -1,9 +1,9 @@
 /**
- * PaSS_BLAS.cu
+ * PaSS_BLAS.cu <br>
  * The basic linear algebra sub-programs for PaSS
  *
- * @author emfo
- * @date 2014.01.13 03:44
+ * \author emfo
+ * \date 2014.01.13 03:44
  */
 
 #include "cuda.h"
@@ -20,18 +20,32 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define n_rows(a) \
-        (u32)((a)[0])
-#define n_cols(a) \
-        (u32)((a)[1])
-#define max_n_rows(a) \
-        (u32)((a)[2])
-#define max_n_cols(a) \
-        (u32)((a)[3])
-#define entry(a, i, j) \
-        (a)[(u32)((a)[3])*(j)+(i)+4]
+#define n_ents(a) \
+        (a)[0]
+#define m_ents(a) \
+        (a)[1]
+#define size_vec(a) \
+        (m_ents(a)+2)
+
 #define entry(a, i) \
-        (a)[(i)+4]
+        (a)[(i)+2]
+
+#define n_cols(a) \
+        (a)[0]
+#define m_cols(a) \
+        (a)[1]
+#define n_rows(a) \
+        (a)[2]
+#define m_rows(a) \
+        (a)[3]
+#define size_mat(a) \
+        ((m_rows(a)+2)*m_cols(a)+2)
+
+#define col(a, j) \
+        ((a)+(j)*((u32)m_rows(a)+2)+2)
+#define entry2(a, i, j) \
+        (a)[(j)*((u32)m_rows(a)+2)+i+2]
+
 
 /**
  * The PaSS_BLAS namespace
@@ -42,20 +56,60 @@ namespace pass_blas {
 	 */
 	typedef uint32_t u32;
 	/**
-	 * matrix type.
-	 * | number of rows | number of columns | max number of rows | max number of columns | column 0 | ... |
+	 * vector type. <br>
+	 * | number of entries | max number of entries  | entries |
 	 */
-	typedef float* mat;
+	typedef float vec;
 	/**
-	 * vector type.
-	 * | number of rows | number of columns | max number of rows | max number of columns | column 0 | ... |
+	 * matrix type. <br>
+	 * | number of columns | max number of columns | column 0 (vec) | column 1 (vec) | ... |
 	 */
-	typedef float* vec;
+	typedef float mat;
 	/**
-	 * u32 vector type.
-	 * | number of rows | number of columns | max number of rows | max number of columns | column 0 | ... |
+	 * u32 vector type. <br>
+	 * | number of entries | max number of entries  | entries |
 	 */
-	typedef u32* uvec;
+	typedef u32 uvec;
+
+	/**
+	 * Initial the vector.
+	 *
+	 * @param v the vector.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void init_vec(vec* v, const u32 n, const u32 m) {
+		n_ents(v) = n;
+		m_ents(v) = m;
+	}
+
+	/**
+	 * Initial the matrax.
+	 *
+	 * @param a the matrix.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void init_mat(mat* a, const u32 p, const u32 q, const u32 mp, const u32 mq) {
+		u32 j;
+		n_cols(a) = q;
+		m_cols(a) = mq;
+		n_rows(a) = p;
+		m_rows(a) = mp;
+		for(j = 1; j < n_cols(a); j++) {
+			a[j*((u32)m_rows(a)+2)+2] = p;
+			a[j*((u32)m_rows(a)+2)+3] = mp;
+		}
+	}
+
+	/**
+	 * Initial the u32 vector.
+	 *
+	 * @param x the u32 vector.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void init_uvec(uvec* x, const u32 n, const u32 m) {
+		n_ents(x) = n;
+		m_ents(x) = m;
+	}
 
 	/**
 	 * Display the vector.
@@ -63,9 +117,9 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void print_vec(const vec v) {
+	__host__ __device__ void print_vec(const vec* v) {
 		u32 i;
-		for(i = 0; i < n_rows(v); i++) {
+		for(i = 0; i < n_ents(v); i++) {
 			printf("%8.3f  ", entry(v, i));
 		}
 		printf("\n");
@@ -78,11 +132,11 @@ namespace pass_blas {
 	 * @param a the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void print_mat(const mat a) {
+	__host__ __device__ void print_mat(const mat* a) {
 		u32 i, j;
 		for(i = 0; i < n_rows(a); i++) {
 			for(j = 0; j < n_cols(a); j++) {
-				printf("%8.3f  ", entry(a, i, j));
+				printf("%8.3f  ", entry2(a, i, j));
 			}
 			printf("\n");
 		}
@@ -96,9 +150,9 @@ namespace pass_blas {
 	 * @param x the u32 vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void print_uvec(const uvec x) {
+	__host__ __device__ void print_uvec(const uvec* x) {
 		u32 i;
-		for(i = 0; i < n_rows(x); i++) {
+		for(i = 0; i < n_ents(x); i++) {
 			printf("%4u ", entry(x, i));
 		}
 		printf("\n");
@@ -113,14 +167,14 @@ namespace pass_blas {
 	 * @param w the addend vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool add_vec(vec u, const vec v, const vec w) {
+	__host__ __device__ bool add_vec(vec* u, const vec* v, const vec* w) {
 		u32 i;
-		if(n_rows(v) != n_rows(w)) {
+		if(n_ents(v) != n_ents(w)) {
 			printf("(add_vec) not aligned!\n");
 			return false;
 		}
-		n_rows(u) = n_rows(v);
-		for(i = 0; i < n_rows(v); i++) {
+		n_ents(u) = n_ents(v);
+		for(i = 0; i < n_ents(v); i++) {
 			entry(u, i) = entry(v, i) + entry(w, i);
 		}
 		return true;
@@ -135,7 +189,7 @@ namespace pass_blas {
 	 * @param a the addend matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool add_mat(mat c, const mat a, const mat b) {
+	__host__ __device__ bool add_mat(mat* c, const mat* a, const mat* b) {
 		u32 i, j;
 		if(n_rows(a) != n_rows(b) || n_cols(a) != n_cols(b)) {
 			printf("(add_mat) not aligned!\n");
@@ -145,7 +199,7 @@ namespace pass_blas {
 		n_cols(c) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			for(i = 0; i < n_rows(a); i++) {
-				entry(c, i, j) = entry(a, i, j) + entry(b, i, j);
+				entry2(c, i, j) = entry2(a, i, j) + entry2(b, i, j);
 			}
 		}
 		return true;
@@ -160,14 +214,14 @@ namespace pass_blas {
 	 * @param w the subtrahend vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sub_vec(vec u, const vec v, const vec w) {
+	__host__ __device__ bool sub_vec(vec* u, const vec* v, const vec* w) {
 		u32 i;
-		if(n_rows(v) != n_rows(w)) {
+		if(n_ents(v) != n_ents(w)) {
 			printf("(sub_vec) not aligned!\n");
 			return false;
 		}
-		n_rows(u) = n_rows(v);
-		for(i = 0; i < n_rows(v); i++) {
+		n_ents(u) = n_ents(v);
+		for(i = 0; i < n_ents(v); i++) {
 			entry(u, i) = entry(v, i) - entry(w, i);
 		}
 		return true;
@@ -182,7 +236,7 @@ namespace pass_blas {
 	 * @param a the subtrahend matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sub_mat(mat c, const mat a, const mat b) {
+	__host__ __device__ bool sub_mat(mat* c, const mat* a, const mat* b) {
 		u32 i, j;
 		if(n_cols(a) != n_cols(b) || n_rows(a) != n_rows(b)) {
 			printf("(sub_mat) not aligned!\n");
@@ -192,7 +246,7 @@ namespace pass_blas {
 		n_cols(c) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			for(i = 0; i < n_rows(a); i++) {
-				entry(c, i, j) = entry(a, i, j) - entry(b, i, j);
+				entry2(c, i, j) = entry2(a, i, j) - entry2(b, i, j);
 			}
 		}
 		return true;
@@ -207,10 +261,10 @@ namespace pass_blas {
 	 * @param f the multiplicand number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void mul_vec(vec u, const vec v, float f) {
+	__host__ __device__ void mul_vec(vec* u, const vec* v, float f) {
 		u32 i;
-		n_rows(u) = n_rows(v);
-		for(i = 0; i < n_rows(v); i++) {
+		n_ents(u) = n_ents(v);
+		for(i = 0; i < n_ents(v); i++) {
 			entry(u, i) = entry(v, i) * f;
 		}
 	}
@@ -224,13 +278,13 @@ namespace pass_blas {
 	 * @param f the multiplicand number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void mul_mat(mat c, const mat a, float f) {
+	__host__ __device__ void mul_mat(mat* c, const mat* a, float f) {
 		u32 i, j;
 		n_rows(c) = n_rows(a);
 		n_cols(c) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			for(i = 0; i < n_rows(a); i++) {
-				entry(c, i, j) = entry(a, i, j) * f;
+				entry2(c, i, j) = entry2(a, i, j) * f;
 			}
 		}
 	}
@@ -244,17 +298,17 @@ namespace pass_blas {
 	 * @param v the multiplier vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool mul_matvec(vec u, const mat a, const vec v) {
+	__host__ __device__ bool mul_matvec(vec* u, const mat* a, const vec* v) {
 		u32 i, j;
-		if(n_rows(v) != n_cols(a)) {
+		if(n_ents(v) != n_cols(a)) {
 			printf("(mul_matvec) not aligned!\n");
 			return false;
 		}
-		n_rows(u) = n_rows(a);
+		n_ents(u) = n_rows(a);
 		for(i = 0; i < n_rows(a); i++) {
 			entry(u, i) = 0;
 			for(j = 0; j < n_cols(a); j++) {
-				entry(u, j) += entry(a, i, j) * entry(v, i);
+				entry(u, j) += entry2(a, i, j) * entry(v, i);
 			}
 		}
 		return true;
@@ -269,17 +323,17 @@ namespace pass_blas {
 	 * @param a the multiplier matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool mul_vecmat(vec u, const vec v, const mat a) {
+	__host__ __device__ bool mul_vecmat(vec* u, const vec* v, const mat* a) {
 		u32 i, j;
-		if(n_rows(v) != n_rows(a)) {
+		if(n_ents(v) != n_rows(a)) {
 			printf("(mul_vecmat) not aligned!\n");
 			return false;
 		}
-		n_rows(u) = n_cols(a);
+		n_ents(u) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			entry(u, j) = 0;
 			for(i = 0; i < n_cols(a); i++) {
-				entry(u, i) += entry(a, i, j) * entry(v, j);
+				entry(u, i) += entry2(a, i, j) * entry(v, j);
 			}
 		}
 		return true;
@@ -294,13 +348,13 @@ namespace pass_blas {
 	 * @param w the multiplier vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void mul_vecvec(mat c, const vec v, const vec w) {
+	__host__ __device__ void mul_vecvec(mat* c, const vec* v, const vec* w) {
 		u32 i, j;
-		n_rows(c) = n_rows(v);
-		n_cols(c) = n_rows(w);
+		n_rows(c) = n_ents(v);
+		n_cols(c) = n_ents(w);
 		for(j = 0; j < n_cols(c); j++) {
 			for(i = 0; i < n_rows(c); i++) {
-				entry(c, i, j) = entry(v, i) * entry(w, j);
+				entry2(c, i, j) = entry(v, i) * entry(w, j);
 			}
 		}
 	}
@@ -313,10 +367,10 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void inner_vec(float* f, const vec v) {
+	__host__ __device__ void inner_vec(float* f, const vec* v) {
 		u32 i;
 		*f = 0;
-		for(i = 0; i < n_rows(v); i++) {
+		for(i = 0; i < n_ents(v); i++) {
 			*f += entry(v, i) * entry(v, i);
 		}
 	}
@@ -330,13 +384,13 @@ namespace pass_blas {
 	 * @param f the product number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool inner_vec(float* f, const vec v, const vec w) {
-		if(n_rows(v) != n_rows(w)) {
+	__host__ __device__ bool inner_vec(float* f, const vec* v, const vec* w) {
+		if(n_ents(v) != n_ents(w)) {
 			printf("(inner_vec) not aligned!\n");
 			return false;
 		}
 		*f = 0;
-		for(u32 i = 0; i < n_rows(v); i++) {
+		for(u32 i = 0; i < n_ents(v); i++) {
 			*f += entry(v, i) * entry(w, i);
 		}
 		return true;
@@ -350,13 +404,13 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void inner_mat(vec u, const mat a) {
+	__host__ __device__ void inner_mat(vec* u, const mat* a) {
 		u32 i, j;
-		n_rows(u) = n_cols(a);
+		n_ents(u) = n_cols(a);
 		for(j = 0; j < n_cols(a); i++) {
 			entry(u, j) = 0;
 			for(i = 0; i < n_rows(a); i++) {
-				entry(u, j) += entry(a, i, j) * entry(a, i, j);
+				entry(u, j) += entry2(a, i, j) * entry2(a, i, j);
 			}
 		}
 	}
@@ -370,17 +424,17 @@ namespace pass_blas {
 	 * @param b the multiplier matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool inner_mat(vec u, const mat a, const mat b) {
+	__host__ __device__ bool inner_mat(vec* u, const mat* a, const mat* b) {
 		u32 i, j;
 		if(n_rows(a) != n_rows(b) || n_cols(a) != n_cols(b)) {
 			printf("(inner_mat) not aligned!\n");
 			return false;
 		}
-		n_rows(u) = n_cols(a);
+		n_ents(u) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			entry(u, j) = 0;
 			for(i = 0; i < n_rows(a); i++) {
-				entry(u, j) += entry(a, i, j) * entry(b, i, j);
+				entry(u, j) += entry2(a, i, j) * entry2(b, i, j);
 			}
 		}
 		return true;
@@ -394,7 +448,7 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void norm(float* f, vec v) {
+	__host__ __device__ void norm_vec(float* f, vec* v) {
 		inner_vec(f, v);
 		*f = sqrt(*f);
 	}
@@ -407,9 +461,9 @@ namespace pass_blas {
 	 * @param f the new entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void insert(vec v, float f) {
-		entry(v, n_rows(v)) = f;
-		n_rows(v)++;
+	__host__ __device__ void insert_vec(vec* v, float f) {
+		entry(v, (u32)n_ents(v)) = f;
+		n_ents(v)++;
 	}
 
 
@@ -420,9 +474,9 @@ namespace pass_blas {
 	 * @param i the new entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void insert(uvec x, u32 i) {
-		entry(x, n_rows(x)) = i;
-		n_rows(x)++;
+	__host__ __device__ void insert_uvec(uvec* x, u32 i) {
+		entry(x, n_ents(x)) = i;
+		n_ents(x)++;
 	}
 
 
@@ -433,13 +487,13 @@ namespace pass_blas {
 	 * @param f the number.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void insert(mat a, float f) {
+	__host__ __device__ void insert_mat(mat* a, float f) {
 		u32 i;
 		for(i = 0; i < n_rows(a); i++) {
-			entry(a, i, n_cols(a)) = f;
+			entry2(a, i, (u32)n_cols(a)) = f;
 		}
 		for(i = 0; i <= n_cols(a); i++) {
-			entry(a, n_rows(a), i) = f;
+			entry2(a, (u32)n_rows(a), i) = f;
 		}
 		n_rows(a)++;
 		n_cols(a)++;
@@ -453,14 +507,14 @@ namespace pass_blas {
 	 * @param v the new vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool insert_row(mat a, vec v) {
+	__host__ __device__ bool insert_row(mat* a, vec* v) {
 		u32 i;
-		if(n_cols(a) != n_rows(v)) {
+		if(n_cols(a) != n_ents(v)) {
 			printf("(insert_row) not aligned!\n");
 			return false;
 		}
 		for(i = 0; i < n_cols(a); i++) {
-			entry(a, n_rows(a), i) = entry(v, i);
+			entry2(a, (u32)n_rows(a), i) = entry(v, i);
 		}
 		return true;
 	}
@@ -473,14 +527,14 @@ namespace pass_blas {
 	 * @param v the new vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool insert_col(mat a, vec v) {
+	__host__ __device__ bool insert_col(mat* a, vec* v) {
 		u32 i;
-		if(n_rows(a) != n_rows(v)) {
+		if(n_rows(a) != n_ents(v)) {
 			printf("(insert_col) not aligned!\n");
 			return false;
 		}
 		for(i = 0; i < n_rows(a); i++) {
-			entry(a, i, n_cols(a)) = entry(v, i);
+			entry2(a, i, (u32)n_cols(a)) = entry(v, i);
 		}
 		return true;
 	}
@@ -492,16 +546,12 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(vec v) {
-		if(n_rows(v) <= 1) {
+	__host__ __device__ bool shed(vec* v) {
+		if(n_ents(v) <= 1) {
 			printf("(shed: vector) too small!\n");
 			return false;
 		}
-		n_rows(v)--;
-		float* temp = new float[n_rows(v)];
-		memcpy(temp, v->e, n_rows(v) * sizeof(float));
-		delete[] v->e;
-		v->e = temp;
+		n_ents(v)--;
 		return true;
 	}
 
@@ -512,12 +562,12 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(uvec x) {
-		if(n_rows(x) <= 1) {
+	__host__ __device__ bool shed(uvec* x) {
+		if(n_ents(x) <= 1) {
 			printf("(shed: index) too small!\n");
 			return false;
 		}
-		n_rows(x)--;
+		n_ents(x)--;
 		return true;
 	}
 
@@ -529,15 +579,15 @@ namespace pass_blas {
 	 * @param n number of entries.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(uvec x, u32 n) {
+	__host__ __device__ bool shed(uvec* x, u32 n) {
 		if(n == 0) {
 			return true;
 		}
-		if(n_rows(x) < n) {
+		if(n_ents(x) < n) {
 			printf("(shed: index) n too large!\n");
 			return false;
 		}
-		n_rows(x) -= n;
+		n_ents(x) -= n;
 		return true;
 	}
 
@@ -548,7 +598,7 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed_row(mat a) {
+	__host__ __device__ bool shed_row(mat* a) {
 		if(n_rows(a) == 0) {
 			printf("(shed_row) empty!\n");
 			return false;	
@@ -564,7 +614,7 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed_col(mat a) {
+	__host__ __device__ bool shed_col(mat* a) {
 		if(n_cols(a) == 0) {
 			printf("(shed_col) empty!\n");
 			return false;
@@ -582,7 +632,7 @@ namespace pass_blas {
 	 * @param j the index of second entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void swap(vec v, u32 i, u32 j) {
+	__host__ __device__ void swap(vec* v, u32 i, u32 j) {
 		float temp = entry(v, i);
 		entry(v, i) = entry(v, j);
 		entry(v, j) = temp;
@@ -597,7 +647,7 @@ namespace pass_blas {
 	 * @param j the index of second entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool swap(uvec x, u32 i, u32 j) {
+	__host__ __device__ bool swap(uvec* x, u32 i, u32 j) {
 		u32 temp = entry(x, i);
 		entry(x, i) = entry(x, j);
 		entry(x, j) = temp;
@@ -613,15 +663,14 @@ namespace pass_blas {
 	 * @param j the index of second row.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void swap_row(mat a, u32 i, u32 j) {
+	__host__ __device__ void swap_row(mat* a, u32 i, u32 j) {
 		u32 k;
 		float temp;
 		for(k = 0; k < n_cols(a); k++) {
-			temp = entry(a, i, k);
-			entry(a, i, k) = entry(a, j, k);
-			entry(a, j, k) = temp;
+			temp = entry2(a, i, k);
+			entry2(a, i, k) = entry2(a, j, k);
+			entry2(a, j, k) = temp;
 		}
-		return true;
 	}
 
 
@@ -633,13 +682,13 @@ namespace pass_blas {
 	 * @param j the index of second column.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void swap_col(mat a, u32 i, u32 j) {
+	__host__ __device__ void swap_col(mat* a, u32 i, u32 j) {
 		u32 k;
 		float temp;
 		for(k = 0; k < n_rows(a); k++) {
-			temp = entry(a, k, i);
-			entry(a, k, i) = entry(a, k, j);
-			entry(a, k, j) = temp;
+			temp = entry2(a, k, i);
+			entry2(a, k, i) = entry2(a, k, j);
+			entry2(a, k, j) = temp;
 		}
 	}
 
@@ -652,9 +701,9 @@ namespace pass_blas {
 	 * @param i the element.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool find_index(u32* k, uvec x, u32 i) {
+	__host__ __device__ bool find_index(u32* k, uvec* x, u32 i) {
 		u32 j;
-		for(j = 0; j < n_rows(x); j++) {
+		for(j = 0; j < n_ents(x); j++) {
 			if(entry(x, j) == i) {
 				*k = j;
 				return true;
@@ -673,10 +722,10 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void find_min_index(u32* k, vec v) {
+	__host__ __device__ void find_min_index(u32* k, vec* v) {
 		u32 j;
 		float f = FLT_MAX;
-		for(j = 0; j < n_rows(v); j++) {
+		for(j = 0; j < n_ents(v); j++) {
 			if(entry(v, j) < f) {
 				f = entry(v, j);
 				*k = j;
@@ -691,9 +740,9 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void sort_ascend(uvec x) {
+	__host__ __device__ void sort_ascend(uvec* x) {
 		u32 i, j, temp;
-		for(i = n_rows(x)-1; i > 0; i--) {
+		for(i = n_ents(x)-1; i > 0; i--) {
 			for(j = 0; j < i; j++) {
 				if(entry(x, j) > entry(x, j+1)) {
 					temp = entry(x, j);
@@ -711,9 +760,9 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sort_descend(uvec x) {
+	__host__ __device__ bool sort_descend(uvec* x) {
 		u32 i, j, temp;
-		for(i = n_rows(x)-1; i > 0; i--) {
+		for(i = n_ents(x)-1; i > 0; i--) {
 			for(j = 0; j < i; j++) {
 				if(entry(x, j) < entry(x, j+1)) {
 					temp = entry(x, j);
@@ -733,20 +782,20 @@ namespace pass_blas {
 	 * @param v the vector (will be sorted).
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sort_index_ascend(uvec z, vec v) {
+	__host__ __device__ bool sort_index_ascend(uvec* z, vec* v) {
 		u32 i, j, ztemp;
 		float vtemp;
-		if(n_row(z) != n_rows(v)) {
+		if(n_rows(z) != n_ents(v)) {
 			printf("(sort_index_ascend) not aligned!\n");
 			return false;
 		}
-		for(u32 i = 0; i < n_rows(v); i++) {
+		for(u32 i = 0; i < n_ents(v); i++) {
 			entry(z, i) = i;
 		}
-		if(n_rows(v) < 2) {
+		if(n_ents(v) < 2) {
 			return true;
 		}
-		for(i = n_rows(v)-1; i > 0; i--) {
+		for(i = n_ents(v)-1; i > 0; i--) {
 			for(j = 0; j < i; j++) {
 				if(entry(v, j) > entry(v, j+1)) {
 					vtemp = entry(v, j);
@@ -769,20 +818,20 @@ namespace pass_blas {
 	 * @param v the vector (will be sorted).
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool sort_index_descend(uvec z, vec v) {
+	__host__ __device__ bool sort_index_descend(uvec* z, vec* v) {
 		u32 i, j, ztemp;
 		float vtemp;
-		if(n_row(z) != n_rows(v)) {
+		if(n_rows(z) != n_ents(v)) {
 			printf("(sort_index_descend) not aligned!\n");
 			return false;
 		}
-		for(u32 i = 0; i < n_rows(v); i++) {
+		for(u32 i = 0; i < n_ents(v); i++) {
 			entry(z, i) = i;
 		}
-		if(n_rows(v) < 2) {
+		if(n_ents(v) < 2) {
 			return true;
 		}
-		for(i = n_rows(v)-1; i > 0; i--) {
+		for(i = n_ents(v)-1; i > 0; i--) {
 			for(j = 0; j < i; j++) {
 				if(entry(v, j) < entry(v, j+1)) {
 					vtemp = entry(v, j);
@@ -806,14 +855,14 @@ namespace pass_blas {
 	 * @param n the length of universe.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool complement(uvec z, uvec x, u32 n) {
-		if(n_rows(z) + n_rows(x) != n) {
+	__host__ __device__ bool complement(uvec* z, uvec* x, u32 n) {
+		if(n_ents(z) + n_ents(x) != n) {
 			printf("(complement) not aligned!\n");
 			return false;
 		}
 		u32 i, j, f;
-		for(i = 0, j = 0, f = 0; j < n_row(z); f++) {
-			if(i < n_rows(x) && f == entry(x, i)) {
+		for(i = 0, j = 0, f = 0; j < n_rows(z); f++) {
+			if(i < n_ents(x) && f == entry(x, i)) {
 				i++;
 			}
 			else {
@@ -833,13 +882,13 @@ namespace pass_blas {
 	 * @param y the subtrahend set index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool set_difference(uvec z, uvec x, uvec y) {
-		if(n_row(z) != n_rows(x)) {
+	__host__ __device__ bool set_difference(uvec* z, uvec* x, uvec* y) {
+		if(n_rows(z) != n_ents(x)) {
 			printf("(set_difference) not aligned!\n");
 			return false;
 		}
 		u32 i, j, k;
-		for(i = 0, j = 0, k = 0; i < n_rows(x) && j < y[0];) {
+		for(i = 0, j = 0, k = 0; i < n_ents(x) && j < y[0];) {
 			if(entry(x, i) < entry(y, j)) {
 				entry(z, k) = entry(x, i);
 				i++;
@@ -851,11 +900,11 @@ namespace pass_blas {
 				j++;
 			}
 		}
-		for(; i < n_rows(x); i++, k++) {
+		for(; i < n_ents(x); i++, k++) {
 			entry(z, k) = entry(x, i);
 		}
-		while(k != n_row(z)) {
-			shed(z, n_row(z) - k);
+		while(k != n_rows(z)) {
+			shed(z, n_rows(z) - k);
 		}
 		return true;
 	}
