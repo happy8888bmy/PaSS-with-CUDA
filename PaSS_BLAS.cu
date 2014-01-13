@@ -44,7 +44,7 @@
 #define col(a, j) \
         ((a)+(j)*((u32)m_rows(a)+2)+2)
 #define entry2(a, i, j) \
-        (a)[(j)*((u32)m_rows(a)+2)+i+2]
+        (a)[(j)*((u32)m_rows(a)+2)+i+4]
 
 
 /**
@@ -308,7 +308,7 @@ namespace pass_blas {
 		for(i = 0; i < n_rows(a); i++) {
 			entry(u, i) = 0;
 			for(j = 0; j < n_cols(a); j++) {
-				entry(u, j) += entry2(a, i, j) * entry(v, i);
+				entry(u, i) += entry2(a, i, j) * entry(v, j);
 			}
 		}
 		return true;
@@ -332,8 +332,8 @@ namespace pass_blas {
 		n_ents(u) = n_cols(a);
 		for(j = 0; j < n_cols(a); j++) {
 			entry(u, j) = 0;
-			for(i = 0; i < n_cols(a); i++) {
-				entry(u, i) += entry2(a, i, j) * entry(v, j);
+			for(i = 0; i < n_rows(a); i++) {
+				entry(u, j) += entry2(a, i, j) * entry(v, i);
 			}
 		}
 		return true;
