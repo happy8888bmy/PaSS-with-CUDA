@@ -61,15 +61,15 @@ namespace pass_blas {
 	 */
 	typedef float vec;
 	/**
-	 * matrix type. <br>
-	 * | number of columns | max number of columns | column 0 (vec) | column 1 (vec) | ... |
-	 */
-	typedef float mat;
-	/**
 	 * u32 vector type. <br>
 	 * | number of entries | max number of entries  | entries |
 	 */
 	typedef u32 uvec;
+	/**
+	 * matrix type. <br>
+	 * | number of columns | max number of columns | column 0 (vec) | column 1 (vec) | ... |
+	 */
+	typedef float mat;
 
 	/**
 	 * Initial the vector.
@@ -81,6 +81,19 @@ namespace pass_blas {
 		n_ents(v) = n;
 		m_ents(v) = m;
 	}
+
+
+	/**
+	 * Initial the u32 vector.
+	 *
+	 * @param x the u32 vector.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void init_uvec(uvec* x, const u32 n, const u32 m) {
+		n_ents(x) = n;
+		m_ents(x) = m;
+	}
+
 
 	/**
 	 * Initial the matrax.
@@ -99,17 +112,43 @@ namespace pass_blas {
 			a[j*((u32)m_rows(a)+2)+3] = mp;
 		}
 	}
+	
 
 	/**
-	 * Initial the u32 vector.
+	 * Copy a vector.
 	 *
-	 * @param x the u32 vector.
+	 * @param u the new vector.
+	 * @param v the original vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void init_uvec(uvec* x, const u32 n, const u32 m) {
-		n_ents(x) = n;
-		m_ents(x) = m;
+	__host__ __device__ void copy_vec(vec* u, const vec* v) {
+		memcpy(u, v, size_vec(v) * sizeof(vec));
 	}
+	
+
+	/**
+	 * Copy a u32 vector.
+	 *
+	 * @param z the new index.
+	 * @param x the original index.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void copy_uvec(uvec* z, const uvec* x) {
+		memcpy(z, x, size_vec(x) * sizeof(uvec));
+	}
+
+
+	/**
+	 * Copy a matrix.
+	 *
+	 * @param c the new matrix.
+	 * @param a the original matrix.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void copy_mat(mat* c, const mat* a) {
+		memcpy(c, a, size_mat(a) * sizeof(mat));
+	}
+
 
 	/**
 	 * Display the vector.
@@ -121,6 +160,21 @@ namespace pass_blas {
 		u32 i;
 		for(i = 0; i < n_ents(v); i++) {
 			printf("%8.3f  ", entry(v, i));
+		}
+		printf("\n");
+	}
+
+
+	/**
+	 * Display the u32 vector.
+	 *
+	 * @param x the u32 vector.
+	 * @return whether this function has been executed successfully or not.
+	 */
+	__host__ __device__ void print_uvec(const uvec* x) {
+		u32 i;
+		for(i = 0; i < n_ents(x); i++) {
+			printf("%4u ", entry(x, i));
 		}
 		printf("\n");
 	}
@@ -139,21 +193,6 @@ namespace pass_blas {
 				printf("%8.3f  ", entry2(a, i, j));
 			}
 			printf("\n");
-		}
-		printf("\n");
-	}
-
-
-	/**
-	 * Display the u32 vector.
-	 *
-	 * @param x the u32 vector.
-	 * @return whether this function has been executed successfully or not.
-	 */
-	__host__ __device__ void print_uvec(const uvec* x) {
-		u32 i;
-		for(i = 0; i < n_ents(x); i++) {
-			printf("%4u ", entry(x, i));
 		}
 		printf("\n");
 	}
@@ -546,7 +585,7 @@ namespace pass_blas {
 	 * @param v the vector.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(vec* v) {
+	__host__ __device__ bool shed_vec(vec* v) {
 		if(n_ents(v) <= 1) {
 			printf("(shed: vector) too small!\n");
 			return false;
@@ -562,7 +601,7 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(uvec* x) {
+	__host__ __device__ bool shed_uvec(uvec* x) {
 		if(n_ents(x) <= 1) {
 			printf("(shed: index) too small!\n");
 			return false;
@@ -579,7 +618,7 @@ namespace pass_blas {
 	 * @param n number of entries.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool shed(uvec* x, u32 n) {
+	__host__ __device__ bool shed_uvec(uvec* x, u32 n) {
 		if(n == 0) {
 			return true;
 		}
@@ -632,7 +671,7 @@ namespace pass_blas {
 	 * @param j the index of second entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ void swap(vec* v, u32 i, u32 j) {
+	__host__ __device__ void swap_vec(vec* v, u32 i, u32 j) {
 		float temp = entry(v, i);
 		entry(v, i) = entry(v, j);
 		entry(v, j) = temp;
@@ -647,7 +686,7 @@ namespace pass_blas {
 	 * @param j the index of second entry.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool swap(uvec* x, u32 i, u32 j) {
+	__host__ __device__ bool swap_uvec(uvec* x, u32 i, u32 j) {
 		u32 temp = entry(x, i);
 		entry(x, i) = entry(x, j);
 		entry(x, j) = temp;
@@ -855,13 +894,10 @@ namespace pass_blas {
 	 * @param n the length of universe.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool complement(uvec* z, uvec* x, u32 n) {
-		if(n_ents(z) + n_ents(x) != n) {
-			printf("(complement) not aligned!\n");
-			return false;
-		}
+	__host__ __device__ void complement(uvec* z, uvec* x, u32 n) {
 		u32 i, j, f;
-		for(i = 0, j = 0, f = 0; j < n_rows(z); f++) {
+		n_ents(z) = n - n_ents(x);
+		for(i = 0, j = 0, f = 0; j < n_ents(z); f++) {
 			if(i < n_ents(x) && f == entry(x, i)) {
 				i++;
 			}
@@ -870,7 +906,6 @@ namespace pass_blas {
 				j++;
 			}
 		}
-		return true;
 	}
 
 
@@ -882,11 +917,7 @@ namespace pass_blas {
 	 * @param y the subtrahend set index.
 	 * @return whether this function has been executed successfully or not.
 	 */
-	__host__ __device__ bool set_difference(uvec* z, uvec* x, uvec* y) {
-		if(n_rows(z) != n_ents(x)) {
-			printf("(set_difference) not aligned!\n");
-			return false;
-		}
+	__host__ __device__ void set_diff(uvec* z, uvec* x, uvec* y) {
 		u32 i, j, k;
 		for(i = 0, j = 0, k = 0; i < n_ents(x) && j < y[0];) {
 			if(entry(x, i) < entry(y, j)) {
@@ -903,9 +934,6 @@ namespace pass_blas {
 		for(; i < n_ents(x); i++, k++) {
 			entry(z, k) = entry(x, i);
 		}
-		while(k != n_rows(z)) {
-			shed(z, n_rows(z) - k);
-		}
-		return true;
+		n_rows(z) = k;
 	}
 }
