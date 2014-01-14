@@ -12,6 +12,7 @@
 #include "PaSS_BLAS.cu"
 using namespace pass_blas;
 
+#include <iostream>
 #include <ctime>
 #include <random>
 using namespace std;
@@ -311,12 +312,14 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	}
 	
 	// Launch the kernel function on the GPU with one thread for each element.
+	clock_t start_clock = clock();
 	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
+	printf("Used %f seconds.\n", (float)(clock() - start_clock) / CLOCKS_PER_SEC);
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "Kernel launch failed: %seed\n", cudaGetErrorString(cudaStatus));
+		fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
 		goto Error;
 	}
 	
