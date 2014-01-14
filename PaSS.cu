@@ -2,8 +2,11 @@
  * PaSS.cu <br>
  * The main functions of PaSS
  *
- * \author emfo
- * \date 2014.01.13 03:44
+ * @author Mu Yang
+ * @author Da-Wei Chang
+ * @author Chen-Yao Lin
+ * @date 2014.01.14 08:18
+ * @version 1.0
  */
 
 #include "PaSS_BLAS.cu"
@@ -13,8 +16,9 @@ using namespace pass_blas;
 #include <random>
 using namespace std;
 
-#define PASS_MAX_N 128
+#define PASS_MAX_N 64
 #define PASS_MAX_P 32
+#define PASS_MAX_MP 4096
 #define PASS_GAMMA 1
 
 /**
@@ -98,35 +102,56 @@ __device__ bool pass_update_cri(Data*, const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 8;
-	u32 host_p = 16;
+	u32 host_n = 64;
+	u32 host_p = 512;
 	Criterion host_cri = HDBIC;
 	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
-	mat* host_X = new mat[(PASS_MAX_N+2)*host_p+2];
-	init_mat(host_X, host_n, host_p, PASS_MAX_N, host_p);
-	vec* host_Y = new vec[PASS_MAX_N+2];
-	init_vec(host_Y, host_n, PASS_MAX_N);
-	uvec* host_I = new uvec[PASS_MAX_P+2];
-	init_uvec(host_I, 0, PASS_MAX_P);
-	float host_phi;
-
+	
+	if(host_n > PASS_MAX_N) {
+		printf("n must smaller than %d!\n", PASS_MAX_N);
+		system("pause");
+		return 1;
+	}
+	if(host_p > PASS_MAX_MP) {
+		printf("p must smaller than %d!\n", PASS_MAX_MP);
+		system("pause");
+		return 1;
+	}
 	if(host_p < 10) {
 		printf("p must greater than 10!\n");
 		system("pause");
 		return 1;
 	}
 	
+	// Declare matrices
+	mat* host_X = new mat[(PASS_MAX_N+2)*host_p+2];
+	n_cols(host_X) = host_p;
+	m_cols(host_X) = host_p;
+	for(u32 j = 0; j < host_p; j++) {
+		n_ents(col(host_X, j)) = host_n;
+		m_ents(col(host_X, j)) = PASS_MAX_N;
+	}
+	vec* host_Y = new vec[PASS_MAX_N+2];
+	m_ents(host_Y) = PASS_MAX_N;
+	uvec* host_I = new uvec[PASS_MAX_P+2];
+	n_ents(host_I) = 0;
+	m_ents(host_I) = PASS_MAX_P;
+	float host_phi;
+	
+	
 	// Initialize data
 	pass_init(host_X, host_Y);
+
+	//printf("\n--------Initialization Finished!--------\n\n");
 		
 	// Run PaSS
 	pass_host(host_X, host_Y, host_I, &host_phi, host_cri, host_par);
 	
 	// Display data
-	printf("X:\n");
-	print_mat(host_X);
-	printf("Y:\n");
-	print_vec(host_Y);
+	//printf("X:\n");
+	//print_mat(host_X);
+	//printf("Y:\n");
+	//print_vec(host_Y);
 	printf("I:\n");
 	print_uvec(host_I);
 	system("pause");
@@ -146,13 +171,16 @@ int main() {
 __host__ void pass_init(mat* X, vec* Y) {
 	u32 i, j, n = n_rows(X), p = n_cols(X), q = 10;
 	vec* Beta = new vec[p+4];
-	init_vec(Beta, p, p);
+	n_ents(Beta) = p;
+	m_ents(Beta) = p;
 	vec* X_hat = new vec[n+4];
-	init_vec(X_hat, n, n);
+	n_ents(X_hat) = n;
+	m_ents(X_hat) = n;
 	vec* Error = new vec[n+4];
-	init_vec(Error, n, n);
+	n_ents(Error) = n;
+	m_ents(Error) = n;
 	vec* Temp = new vec[p+4];
-	init_vec(Temp, p, p);
+	m_ents(Temp) = p;
 	float temp;
 
 	// Generate X and Error using normal random
@@ -181,10 +209,10 @@ __host__ void pass_init(mat* X, vec* Y) {
 	for(j = q; j < p; j++) {
 		entry(Beta, j) = 0;
 	}
-	for(j = 0; j < q; j++) {
-		entry(X_hat, j) = 0;
-		for(i = 0; i < n; i++) {
-			entry(X_hat, j) += entry2(X, i, j);
+	for(i = 0; i < n; i++) {
+		entry(X_hat, i) = 0;
+		for(j = 0; j < q; j++) {
+			entry(X_hat, i) += entry2(X, i, j);
 		}
 	}
 	mul_vec(X_hat, X_hat, 1 / sqrt(2 * (float)q));
@@ -218,7 +246,7 @@ __host__ void pass_init(mat* X, vec* Y) {
  *
  * @param host_X the matrix X
  * @param host_Y the vector Y
- * @param host_I the index IIII
+ * @param host_I the index I
  * @param host_phi the value phi
  * @param host_cri the criterion
  * @param host_par the parameter value
@@ -283,8 +311,7 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	}
 	
 	// Launch the kernel function on the GPU with one thread for each element.
-	// pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
-	pass_kernel<<<1, 1>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
+	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
@@ -303,7 +330,7 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	// Copy output vector from GPU buffer to host memory.
 	cudaStatus = cudaMemcpy(host_I, dev_I, size_vec(host_I) * sizeof(uvec), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy (IIII) failed!\n");
+		fprintf(stderr, "cudaMemcpy (I) failed!\n");
 		goto Error;
 	}
 
@@ -358,7 +385,9 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 	// Initialize Particles
 	if(p >= par.nP && id == 0) {
 		CC = new vec[p];
+		m_ents(CC) = p;
 		II = new uvec[p];
+		m_ents(II) = p;
 		mul_vecmat(CC, Y, X);
 		for(i = 0; i < n_ents(CC); i++) {
 			entry(CC, i) = abs(entry(CC, i));
@@ -443,7 +472,9 @@ __device__ bool pass_update_fb(Data* data) {
 			uvec I_B[PASS_MAX_P+2];
 			uvec I_C[PASS_MAX_P+2];
 			uvec I_D[PASS_MAX_P+2];
-			uvec I_R[PASS_MAX_P+2];
+			uvec I_R[PASS_MAX_MP+2];
+			m_ents(I_D) = PASS_MAX_P;
+			m_ents(I_R) = PASS_MAX_MP;
 
 			// Sort I_B
 			copy_uvec(I_B, I);
@@ -484,9 +515,13 @@ __device__ bool pass_update_fb(Data* data) {
 			// Determine the index to remove
 			if(curand_uniform(&seed)< par.pbl) {
 				mat B[(PASS_MAX_N+2)*PASS_MAX_P+2];
-				init_mat(B, n_rows(data->X), n_cols(data->X), PASS_MAX_N, PASS_MAX_P);
 				vec C[PASS_MAX_P+2];
-				init_vec(C, n_cols(data->X), PASS_MAX_P);
+				n_cols(B) = n_cols(data->X);
+				m_cols(B) = PASS_MAX_P;
+				for(i = 0; i < n_cols(B); i++) {
+					m_ents(col(B, i)) = PASS_MAX_N;
+				}
+				m_ents(C) = PASS_MAX_P;
 				u32 ii;
 				for(i = 0; i < n_cols(B); i++) {
 					mul_vec(col(B, i), col(data->X, i), entry(data->Beta, i));
@@ -523,22 +558,27 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			m_cols(data->X) = PASS_MAX_P;
 			copy_vec(col(data->X, 0), col(X, index));
 			Xnew = (vec*)col(X, index);
-
-			init_mat(data->InvA, 1, 1, PASS_MAX_P, PASS_MAX_P);
+			
+			n_rows(data->InvA) = 1;
+			n_cols(data->InvA) = 1;
+			m_rows(data->InvA) = PASS_MAX_P;
+			m_cols(data->InvA) = PASS_MAX_P;
 			float a;
 			inner_vec(&a, Xnew);
 			entry2(data->InvA, 0, 0) = 1 / a;
-
-			init_vec(data->Theta, 1, PASS_MAX_P);
+			
+			n_ents(data->Theta) = 1;
+			m_ents(data->Theta) = PASS_MAX_P;
 			inner_vec(&entry(data->Theta, 0), Xnew, Y);
 			
-			init_vec(data->Beta, 1, PASS_MAX_P);
+			m_ents(data->Beta) = PASS_MAX_P;
 			mul_matvec(data->Beta, data->InvA, data->Theta);
 			
-			init_uvec(data->I, 1, PASS_MAX_P);
+			n_ents(data->I) = 1;
+			m_ents(data->I) = PASS_MAX_P;
 			entry(data->I, 0) = index;
-
-			init_vec(data->R, 1, PASS_MAX_N);
+			
+			m_ents(data->R) = PASS_MAX_N;
 
 			k = 1;
 		}
@@ -553,9 +593,10 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			float alpha;
 			float c1;
 			float c2;
-			init_vec(B, k, PASS_MAX_P);
-			init_vec(D, k, PASS_MAX_P);
-			init_mat(InvAtemp, k+1, k+1, PASS_MAX_P, PASS_MAX_P);
+			m_ents(B) = PASS_MAX_P;
+			m_ents(D) = PASS_MAX_P;
+			m_rows(InvAtemp) = PASS_MAX_P;
+			m_cols(InvAtemp) = PASS_MAX_P;
 
 			copy_vec(col(data->X, k), col(X, index));
 			Xnew = col(data->X, k);
@@ -596,6 +637,9 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			mat E[(PASS_MAX_P+2)*PASS_MAX_P+2];
 			vec F[PASS_MAX_P+2];
 			float g;
+			m_rows(E) = PASS_MAX_P;
+			m_cols(E) = PASS_MAX_P;
+			m_ents(F) = PASS_MAX_P;
 
 			find_index(&ii, data->I, index);
 			if(ii != k) {
@@ -608,20 +652,18 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			}
 
 			shed_col(data->X);
-
 			shed_vec(data->Theta);
 			shed_uvec(data->I);
 
 			g = entry2(data->InvA, k, k);
-
+			
 			shed_row(data->InvA);
 			copy_vec(F, col(data->InvA, k));
 			shed_col(data->InvA);
-
+			
 			mul_vecvec(E, F, F);
 			mul_mat(E, E, 1/g);
 			sub_mat(data->InvA, data->InvA, E);
-
 			
 			mul_vec(F, F, entry(data->Beta, k) / g);
 			shed_vec(data->Beta);
