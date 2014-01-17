@@ -5,8 +5,8 @@
  * @author Mu Yang
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
- * @date 2014.01.17 19:00
- * @version 1.0
+ * @date 2014.01.18 12:39
+ * @version 1.1 beta
  */
 
 #include "PaSS_BLAS.cu"
@@ -103,10 +103,10 @@ __device__ bool pass_update_cri(Data*, const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 400;
-	u32 host_p = 4000;
+	u32 host_n = 32;
+	u32 host_p = 128;
 	Criterion host_cri = EBIC;
-	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
+	Parameter host_par = {32, 16, .8f, .1f, .1f, .9f, .1f};
 	
 	if(host_n > PASS_MAX_N) {
 		printf("n must smaller than %d!\n", PASS_MAX_N);
@@ -215,23 +215,23 @@ __host__ void pass_init(mat* X, vec* Y) {
 			entry(X_hat, i) += entry2(X, i, j);
 		}
 	}
-	mul_vec(X_hat, X_hat, 1 / sqrt(2 * (float)q));
+	mul_vec_host(X_hat, X_hat, 1 / sqrt(2 * (float)q));
 	for(j = q; j < p; j++) {
-		mul_vec(col(X, j), col(X, j), .5f);
-		add_vec(col(X, j), col(X, j), X_hat);
+		mul_vec_host(col(X, j), col(X, j), .5f);
+		add_vec_host(col(X, j), col(X, j), X_hat);
 	}
 	mul_matvec(Y, X, Beta);
-	add_vec(Y, Y, Error);
+	add_vec_host(Y, Y, Error);
 	
 	// Normalize X
 	for(j = 0; j < p; j++) {
 		norm_vec(&temp, col(X, j));
-		mul_vec(col(X, j), col(X, j), 1/temp);
+		mul_vec_host(col(X, j), col(X, j), 1/temp);
 	}
 
 	// Normalize Y
 	norm_vec(&temp, Y);
-	mul_vec(Y, Y, 1/temp);
+	mul_vec_host(Y, Y, 1/temp);
 
 	delete[] Beta;
 	delete[] X_hat;
@@ -267,7 +267,7 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 		goto Error;
 	}
 	
-	// Allocate GPU buffers for data.
+	// Allocate GPU buffers for data->
 	cudaStatus = cudaMalloc((void**)&dev_X, size_mat(host_X) * sizeof(mat));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc (X) failed!\n");
@@ -365,12 +365,12 @@ Error:
  */
 __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, float* const dev_phi, Criterion dev_cri, Parameter dev_par) {
 	// Declare variables
-	u32 id = threadIdx.x;
+	u32 tid = threadIdx.x;
 	u32 i, j;
-	Data data;
+	Data* data = new Data();
 	float phi_old;
 	
-	if(id == 0) {
+	if(tid == 0) {
 		// Initialize Random Seed
 		curand_init(clock64(), 0, 0, &seed);
 
@@ -387,7 +387,7 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 	__syncthreads();
 
 	// Initialize Particles
-	if(p >= par.nP && id == 0) {
+	if(p >= par.nP && tid == 0) {
 		CC = new vec[p];
 		II = new uvec[p];
 		m_ents(CC) = p;
@@ -400,23 +400,23 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 	}
 	__syncthreads();
 
-	data.stat = init;
+	data->stat = init;
 	if(p >= par.nP) {
-		pass_update_cri(&data, entry(II, id));
+		pass_update_cri(data, entry(II, tid));
 	} else {
-		pass_update_cri(&data, curand(&seed) % p);
+		pass_update_cri(data, curand(&seed) % p);
 	}
-	if(p >= par.nP && id == 0) {
+	if(p >= par.nP && tid == 0) {
 		delete[] CC;
 		delete[] II;
 	}
-	phi_old = data.phi;
-	data.stat = forw;
+	phi_old = data->phi;
+	data->stat = forw;
 
 	// Choose Global Best
-	if(id == 0) {
-		*dev_phi = data.phi;
-		copy_uvec(I, data.I);
+	if(tid == 0) {
+		*dev_phi = data->phi;
+		copy_uvec(I, data->I);
 	}
 	__syncthreads();
 	
@@ -424,44 +424,46 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 	// Find Best Data
 	for(i = 0; i < par.nI; i++) {
 		// Update data
-		pass_update_fb(&data);
-		if(data.phi - phi_old > 0) {
-			data.stat = (Stat)(-data.stat);
+		pass_update_fb(data);
+		if(data->phi - phi_old > 0) {
+			data->stat = (Stat)(-data->stat);
 		}
-		if(n_ents(data.I) <= 1) {
-			data.stat = forw;
+		if(n_ents(data->I) <= 1) {
+			data->stat = forw;
 		}
-		if(n_ents(data.I) >= PASS_MAX_P-1) {
-			data.stat = back;
+		if(n_ents(data->I) >= PASS_MAX_P-1) {
+			data->stat = back;
 		}
-		phi_old = data.phi;
+		phi_old = data->phi;
 
 		// Choose Global Best
-		phi_all[id] = data.phi;
+		phi_all[tid] = data->phi;
 		__syncthreads();
-		if(id == 0) {
+		if(tid == 0) {
 			id_best = (u32)(-1);
 			for(j = 0; j < par.nP; j++) {
 				if(phi_all[j] < *dev_phi) {
 					id_best = j;
-					*dev_phi = data.phi;
+					*dev_phi = data->phi;
 				}
 			}
 		}
 		__syncthreads();
-		if(id == id_best) {
-			copy_uvec(I, data.I);
+		if(tid == id_best) {
+			copy_uvec(I, data->I);
 		}
 		__syncthreads();
 	}
 	
-	if(id == 0) {
+	if(tid == 0) {
 		// Sort I
 		sort_ascend(I);
 		
 		// Delete variables
 		delete phi_all;
 	}
+	
+	delete data;
 }
 
 
@@ -473,10 +475,10 @@ __device__ bool pass_update_fb(Data* data) {
 	switch(data->stat) {
 	case forw: // Forward
 		{
-			uvec I_B[PASS_MAX_P+2];
-			uvec I_C[PASS_MAX_P+2];
-			uvec I_D[PASS_MAX_P+2];
-			uvec I_R[PASS_MAX_MP+2];
+			uvec* I_B = new uvec[PASS_MAX_P+2];
+			uvec* I_C = new uvec[PASS_MAX_P+2];
+			uvec* I_D = new uvec[PASS_MAX_P+2];
+			uvec* I_R = new uvec[PASS_MAX_MP+2];
 			m_ents(I_D) = PASS_MAX_P;
 			m_ents(I_R) = PASS_MAX_MP;
 
@@ -512,14 +514,20 @@ __device__ bool pass_update_fb(Data* data) {
 			else{
 				index = entry(I_R, curand(&seed) % n_ents(I_R));
 			}
+			
+			delete[] I_B;
+			delete[] I_C;
+			delete[] I_D;
+			delete[] I_R;
+			
 			break;
 		}
 	case back: // Backward
 		{
 			// Determine the index to remove
 			if(curand_uniform(&seed)< par.pbl) {
-				mat B[(PASS_MAX_N+2)*PASS_MAX_P+2];
-				vec C[PASS_MAX_P+2];
+				mat* B = new mat[(PASS_MAX_N+2)*PASS_MAX_P+2];
+				vec* C = new vec[PASS_MAX_P+2];
 				n_cols(B) = n_cols(data->X);
 				m_cols(B) = PASS_MAX_P;
 				for(i = 0; i < n_cols(B); i++) {
@@ -534,6 +542,8 @@ __device__ bool pass_update_fb(Data* data) {
 				inner_mat(C, B);
 				find_min_index(&ii, C);
 				index = entry(data->I, ii);
+				delete[] B;
+				delete[] C;
 			}
 			else{
 				index = entry(data->I, curand(&seed) % n_ents(data->I));
@@ -593,16 +603,16 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		{
 			k = n_ents(data->I);
 			
-			vec B[PASS_MAX_P+2];
-			vec D[PASS_MAX_P+2];
-			mat InvAtemp[(PASS_MAX_P+2)*PASS_MAX_P+2];
+			vec* B = new vec[PASS_MAX_P+2];
+			vec* D = new vec[PASS_MAX_P+2];
+			mat* M = new mat[(PASS_MAX_P+2)*PASS_MAX_P+2];
 			float alpha;
 			float c1;
 			float c2;
 			m_ents(B) = PASS_MAX_P;
 			m_ents(D) = PASS_MAX_P;
-			m_rows(InvAtemp) = PASS_MAX_P;
-			m_cols(InvAtemp) = PASS_MAX_P;
+			m_rows(M) = PASS_MAX_P;
+			m_cols(M) = PASS_MAX_P;
 
 			copy_vec(col(data->X, k), col(X, index));
 			Xnew = col(data->X, k);
@@ -618,10 +628,10 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 
 			n_cols(data->X)++;
 
-			mul_vecvec(InvAtemp, D, D);
-			mul_mat(InvAtemp, InvAtemp, alpha);
+			mul_vecvec(M, D, D);
+			mul_mat(M, M, alpha);
 			insert_mat(data->InvA, 0.0f);
-			add_mat(data->InvA, data->InvA, InvAtemp);
+			add_mat(data->InvA, data->InvA, M);
 			
 			inner_vec(&c1, Xnew, Y);
 			insert_vec(data->Theta, c1);
@@ -640,8 +650,8 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		{
 			k = n_ents(data->I) - 1;
 			u32 ii;
-			mat E[(PASS_MAX_P+2)*PASS_MAX_P+2];
-			vec F[PASS_MAX_P+2];
+			mat* E = new mat[(PASS_MAX_P+2)*PASS_MAX_P+2];
+			vec* F = new vec[PASS_MAX_P+2];
 			float g;
 			m_rows(E) = PASS_MAX_P;
 			m_cols(E) = PASS_MAX_P;
@@ -674,6 +684,9 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			mul_vec(F, F, entry(data->Beta, k) / g);
 			shed_vec(data->Beta);
 			sub_vec(data->Beta, data->Beta, F);
+			
+			delete[] E;
+			delete[] F;
 		}
 		break;
 	}
