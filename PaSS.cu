@@ -5,7 +5,7 @@
  * @author Mu Yang
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
- * @date 2014.01.14 08:18
+ * @date 2014.01.17 19:00
  * @version 1.0
  */
 
@@ -14,11 +14,10 @@ using namespace pass_blas;
 
 #include <iostream>
 #include <ctime>
-#include <random>
 using namespace std;
 
-#define PASS_MAX_N 64
-#define PASS_MAX_P 32
+#define PASS_MAX_N 512
+#define PASS_MAX_P 16
 #define PASS_MAX_MP 4096
 #define PASS_GAMMA 1
 
@@ -72,6 +71,7 @@ namespace pass{
 		Stat stat;                             /**< the status */
 		vec Theta[PASS_MAX_P+2];               /**< the vector theta */
 		mat X[(PASS_MAX_N+2)*PASS_MAX_P+2];    /**< the data we chosen */
+		vec Y[PASS_MAX_N+2];                   /**< the data Y */
 	};
 }
 using namespace pass;
@@ -103,9 +103,9 @@ __device__ bool pass_update_cri(Data*, const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 64;
-	u32 host_p = 512;
-	Criterion host_cri = HDBIC;
+	u32 host_n = 400;
+	u32 host_p = 4000;
+	Criterion host_cri = EBIC;
 	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
 	
 	if(host_n > PASS_MAX_N) {
@@ -153,9 +153,9 @@ int main() {
 	//print_mat(host_X);
 	//printf("Y:\n");
 	//print_vec(host_Y);
-	printf("I:\n");
+	printf("I:");
 	print_uvec(host_I);
-	system("pause");
+	//system("pause");
 	delete[] host_X;
 	delete[] host_Y;
 	delete[] host_I;
@@ -185,15 +185,14 @@ __host__ void pass_init(mat* X, vec* Y) {
 	float temp;
 
 	// Generate X and Error using normal random
-	default_random_engine generator((u32)time(NULL));
-	normal_distribution<float> distribution;
+	srand (time(NULL));
 	for(j = 0; j < n_cols(X); j++) {
 		for(i = 0; i < n_rows(X); i++) {
-			entry2(X, i, j) = distribution(generator);
+			entry2(X, i, j) = randn(0,1);
 		}
 	}
 	for(i = 0; i < n_cols(Error); i++) {
-		entry(Error, i) = distribution(generator);
+		entry(Error, i) = randn(0,1);
 	}
 	
 	// Compute X and Y
@@ -259,6 +258,7 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	uvec* dev_I = 0;
 	float* dev_phi = 0;
 	cudaError_t cudaStatus;
+	clock_t start_clock;
 
 	// Choose which GPU to run on, change this on a multi-GPU system.
 	cudaStatus = cudaSetDevice(0);
@@ -312,8 +312,9 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	}
 	
 	// Launch the kernel function on the GPU with one thread for each element.
-	clock_t start_clock = clock();
+	start_clock = clock();
 	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
+	cudaThreadSynchronize();
 	printf("Used %f seconds.\n", (float)(clock() - start_clock) / CLOCKS_PER_SEC);
 
 	// Check for any errors launching the kernel.
@@ -388,8 +389,8 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 	// Initialize Particles
 	if(p >= par.nP && id == 0) {
 		CC = new vec[p];
-		m_ents(CC) = p;
 		II = new uvec[p];
+		m_ents(CC) = p;
 		m_ents(II) = p;
 		mul_vecmat(CC, Y, X);
 		for(i = 0; i < n_ents(CC); i++) {
@@ -406,8 +407,8 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 		pass_update_cri(&data, curand(&seed) % p);
 	}
 	if(p >= par.nP && id == 0) {
-		delete CC;
-		delete II;
+		delete[] CC;
+		delete[] II;
 	}
 	phi_old = data.phi;
 	data.stat = forw;
@@ -582,7 +583,9 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			entry(data->I, 0) = index;
 			
 			m_ents(data->R) = PASS_MAX_N;
-
+			
+			copy_vec(data->Y, Y);
+			
 			k = 1;
 		}
 		break;
@@ -676,7 +679,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	}
 
 	mul_matvec(data->R, data->X, data->Beta);
-	sub_vec(data->R, Y, data->R);
+	sub_vec(data->R, data->Y, data->R);
 
 	norm_vec(&data->e, data->R);
 	
