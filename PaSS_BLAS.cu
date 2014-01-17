@@ -6,7 +6,7 @@
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
  * @date 2014.01.18 12:39
- * @version 1.0
+ * @version 1.1 beta
  */
 
 #include "cuda.h"
