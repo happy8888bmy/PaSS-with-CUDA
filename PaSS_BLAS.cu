@@ -5,7 +5,7 @@
  * @author Mu Yang
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
- * @date 2014.01.14 08:18
+ * @date 2014.01.11 19:00
  * @version 1.0
  */
 
@@ -918,3 +918,30 @@ namespace pass_blas {
 		n_ents(z) = k;
 	}
 }
+
+	__host__ float randn (float mu, float sigma)
+{
+	float u1, u2, w, m;
+	static float x1, x2;
+	static int called = 0;
+	if(called == 1)
+	{
+		called = !called;
+		return (mu + sigma * x2);
+	}
+	do
+	{
+		u1 = -1 + ((float)rand() / RAND_MAX) * 2;
+		u2 = -1 + ((float)rand() / RAND_MAX) * 2;
+		w = u1 * u1 + u2 * u2;
+	}
+	while(w >= 1 || w == 0);
+	
+	m = sqrt ((-2 * log(w)) / w);
+	x1 = u1 * m;
+	x2 = u2 * m;
+	
+	called = !called;
+	
+	return (mu + sigma * (float)x1);
+ }
