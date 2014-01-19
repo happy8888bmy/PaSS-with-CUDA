@@ -1,12 +1,14 @@
-/**
- * PaSS.cu <br>
+/*
+ * PaSS.cu
  * The main functions of PaSS
- *
+ */
+
+/**@mainpage
  * @author Mu Yang
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
- * @date 2014.01.18 12:39
- * @version 1.1 beta
+ * @date 2014.01.19 18:16
+ * @version 1.1
  */
 
 #include "PaSS_BLAS.cu"
@@ -14,6 +16,8 @@ using namespace pass_blas;
 
 #include <iostream>
 #include <ctime>
+#include <thrust/sort.h>
+#include <thrust/functional.h>
 using namespace std;
 
 #define PASS_MAX_N 512
@@ -40,7 +44,7 @@ namespace pass{
 	enum Criterion {
 		AIC,   /**< Akaike information criterion */
 		BIC,   /**< Bayesian information criterion */
-		EBIC,  /**< EBIC */
+		EBIC,  /**< Extended Bayesian information criterion */
 		HDBIC, /**< HDBIC */
 		HDHQ   /**< HDHQ */
 	};
@@ -92,7 +96,7 @@ __device__ uvec* II;
 
 // Functions
 void pass_init(mat*, vec*);
-void pass_host(const mat*, const vec*, uvec*, float*, const Criterion, const Parameter);
+void pass_host(const mat*, const vec*, uvec*, float*, const Criterion, const Parameter, float*);
 __global__ void pass_kernel(const mat*, const vec*, uvec*, float*, const Criterion, const Parameter);
 __device__ bool pass_update_fb(Data*);
 __device__ bool pass_update_cri(Data*, const u32);
@@ -103,10 +107,10 @@ __device__ bool pass_update_cri(Data*, const u32);
  */
 int main() {
 	// Declare variables
-	u32 host_n = 32;
-	u32 host_p = 128;
-	Criterion host_cri = EBIC;
-	Parameter host_par = {32, 16, .8f, .1f, .1f, .9f, .1f};
+	u32 host_n = 400;
+	u32 host_p = 4000;
+	Criterion host_cri = HDBIC;
+	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
 	
 	if(host_n > PASS_MAX_N) {
 		printf("n must smaller than %d!\n", PASS_MAX_N);
@@ -137,25 +141,22 @@ int main() {
 	uvec* host_I = new uvec[PASS_MAX_P+2];
 	n_ents(host_I) = 0;
 	m_ents(host_I) = PASS_MAX_P;
-	float host_phi;
+	float host_phi, time;
 	
+	const u32 nTest = 10;
 	
-	// Initialize data
-	pass_init(host_X, host_Y);
-
-	//printf("\n--------Initialization Finished!--------\n\n");
+	for(u32 t = 0; t < nTest; t++) {
+		// Initialize data
+		pass_init(host_X, host_Y);
+			
+		// Run PaSS
+		pass_host(host_X, host_Y, host_I, &host_phi, host_cri, host_par, &time);
 		
-	// Run PaSS
-	pass_host(host_X, host_Y, host_I, &host_phi, host_cri, host_par);
-	
-	// Display data
-	//printf("X:\n");
-	//print_mat(host_X);
-	//printf("Y:\n");
-	//print_vec(host_Y);
-	printf("I:");
-	print_uvec(host_I);
-	//system("pause");
+		// Display data
+		printf("%3d:", t);
+		print_uvec(host_I);
+	}
+	cout << "Used " << time/nTest  << " seconds on average." << endl;
 	delete[] host_X;
 	delete[] host_Y;
 	delete[] host_I;
@@ -220,17 +221,17 @@ __host__ void pass_init(mat* X, vec* Y) {
 		mul_vec_host(col(X, j), col(X, j), .5f);
 		add_vec_host(col(X, j), col(X, j), X_hat);
 	}
-	mul_matvec(Y, X, Beta);
+	mul_matvec_host(Y, X, Beta);
 	add_vec_host(Y, Y, Error);
 	
 	// Normalize X
 	for(j = 0; j < p; j++) {
-		norm_vec(&temp, col(X, j));
+		norm_vec_host(&temp, col(X, j));
 		mul_vec_host(col(X, j), col(X, j), 1/temp);
 	}
 
 	// Normalize Y
-	norm_vec(&temp, Y);
+	norm_vec_host(&temp, Y);
 	mul_vec_host(Y, Y, 1/temp);
 
 	delete[] Beta;
@@ -251,7 +252,7 @@ __host__ void pass_init(mat* X, vec* Y) {
  * @param host_cri the criterion
  * @param host_par the parameter value
  */
-__host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, float* host_phi, const Criterion host_cri, const Parameter host_par) {
+__host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, float* host_phi, const Criterion host_cri, const Parameter host_par, float* time) {
 	// Declare variables
 	mat* dev_X = 0;
 	vec* dev_Y = 0;
@@ -315,7 +316,7 @@ __host__ void pass_host(const mat* host_X, const vec* host_Y, uvec* host_I, floa
 	start_clock = clock();
 	pass_kernel<<<1, host_par.nP>>>(dev_X, dev_Y, dev_I, dev_phi, host_cri, host_par);
 	cudaThreadSynchronize();
-	printf("Used %f seconds.\n", (float)(clock() - start_clock) / CLOCKS_PER_SEC);
+	*time += (float)(clock() - start_clock) / CLOCKS_PER_SEC;
 
 	// Check for any errors launching the kernel.
 	cudaStatus = cudaGetLastError();
@@ -363,7 +364,7 @@ Error:
  * @param dev_cri the criterion
  * @param dev_par the parameter value
  */
-__global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, float* const dev_phi, Criterion dev_cri, Parameter dev_par) {
+__global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, float* dev_phi, const Criterion dev_cri, const Parameter dev_par) {
 	// Declare variables
 	u32 tid = threadIdx.x;
 	u32 i, j;
@@ -469,6 +470,8 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 
 /**
  * Determine forward or backward
+ * 
+ * @param data the updating data
  */
 __device__ bool pass_update_fb(Data* data) {
 	u32 i, index = 0;
@@ -534,14 +537,13 @@ __device__ bool pass_update_fb(Data* data) {
 					m_ents(col(B, i)) = PASS_MAX_N;
 				}
 				m_ents(C) = PASS_MAX_P;
-				u32 ii;
 				for(i = 0; i < n_cols(B); i++) {
 					mul_vec(col(B, i), col(data->X, i), entry(data->Beta, i));
 					add_vec(col(B, i), col(B, i), data->R);
 				}
 				inner_mat(C, B);
-				find_min_index(&ii, C);
-				index = entry(data->I, ii);
+				find_min_index(&i, C);
+				index = entry(data->I, i);
 				delete[] B;
 				delete[] C;
 			}
@@ -643,13 +645,17 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 
 			insert_uvec(data->I, index);
 			
+			delete[] B;
+			delete[] D;
+			delete[] M;
+			
 			k++;
 		}
 		break;
 	case back: // Backward
 		{
 			k = n_ents(data->I) - 1;
-			u32 ii;
+			u32* i = new u32[1];
 			mat* E = new mat[(PASS_MAX_P+2)*PASS_MAX_P+2];
 			vec* F = new vec[PASS_MAX_P+2];
 			float g;
@@ -657,14 +663,14 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			m_cols(E) = PASS_MAX_P;
 			m_ents(F) = PASS_MAX_P;
 
-			find_index(&ii, data->I, index);
-			if(ii != k) {
-				swap_col(data->X, ii, k);
-				swap_vec(data->Theta, ii, k);
-				swap_vec(data->Beta, ii, k);
-				swap_row(data->InvA, ii, k);
-				swap_col(data->InvA, ii, k);
-				swap_uvec(data->I, ii, k);
+			find_index(i, data->I, index);
+			if(*i != k) {
+				swap_col(data->X, *i, k);
+				swap_vec(data->Theta, *i, k);
+				swap_vec(data->Beta, *i, k);
+				swap_row(data->InvA, *i, k);
+				swap_col(data->InvA, *i, k);
+				swap_uvec(data->I, *i, k);
 			}
 
 			shed_col(data->X);
@@ -685,6 +691,7 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 			shed_vec(data->Beta);
 			sub_vec(data->Beta, data->Beta, F);
 			
+			delete[] i;
 			delete[] E;
 			delete[] F;
 		}
