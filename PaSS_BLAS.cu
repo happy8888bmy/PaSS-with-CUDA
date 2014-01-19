@@ -1,12 +1,6 @@
-/**
- * PaSS_BLAS.cu <br>
+/*
+ * PaSS_BLAS.cu
  * The basic linear algebra sub-programs for PaSS
- *
- * @author Mu Yang
- * @author Da-Wei Chang
- * @author Chen-Yao Lin
- * @date 2014.01.18 12:39
- * @version 1.1 beta
  */
 
 #include "cuda.h"
@@ -22,6 +16,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+
 
 /**
  * The rule of defines:<br>
@@ -54,10 +49,14 @@
 
 #define col(a, j) \
 	((a)+(j)*((u32)m_rows(a)+2)+2)
+#define coldev(a, width, j) \
+	((a)+(j)*((width)+2)+2)
 #define entry2(a, i, j) \
-	(a)[(j)*((u32)m_rows(a)+2)+i+4]
+	(a)[(j)*((u32)m_rows(a)+2)+(i)+4]
+#define entry2dev(a, width, i, j) \
+	(a)[(j)*((width)+2)+(i)+4]
 
-
+	
 /**
  * The PaSS_BLAS namespace
  */
@@ -81,7 +80,7 @@ namespace pass_blas {
 	 * | number of columns | max number of columns | column 0 (vec) | column 1 (vec) | ... |
 	 */
 	typedef float mat;
-
+	
 	/**
 	 * Copy a vector.
 	 *
@@ -160,6 +159,7 @@ namespace pass_blas {
 	}
 
 
+	__global__ void add_vec_child(vec*, const vec*, const vec*);
 	/**
 	 * u = v+w.
 	 *
@@ -167,6 +167,17 @@ namespace pass_blas {
 	 * @param v the augend vector.
 	 * @param w the addend vector.
 	 */
+	__device__ inline void add_vec(vec* u, const vec* v, const vec* w) {
+		n_ents(u) = n_ents(v);
+		add_vec_child<<<1, n_ents(u)>>>(u, v, w);
+		cudaDeviceSynchronize();
+	}
+	
+	__global__ void add_vec_child(vec* u, const vec* v, const vec* w) {
+		u32 tid = threadIdx.x;
+		entry(u, tid) = entry(v, tid) + entry(w, tid);
+	}
+	
 	__host__ void add_vec_host(vec* u, const vec* v, const vec* w) {
 		//if(m_ents(u) != m_ents(v) || m_ents(u) != m_ents(w)) {
 		//	printf("Warning: add_vec overflowed!\n");
@@ -180,18 +191,10 @@ namespace pass_blas {
 			entry(u, i) = entry(v, i) + entry(w, i);
 		}
 	}
-	
-	__global__ void add_vec_child(vec* u, const vec* v, const vec* w) {
-		entry(u, threadIdx.x) = entry(v, threadIdx.x) + entry(w, threadIdx.x);
-	}
-	
-	__device__ inline void add_vec(vec* u, const vec* v, const vec* w) {
-		n_ents(u) = n_ents(v);
-		add_vec_child<<<1, n_ents(u)>>>(u, v, w);
-		cudaDeviceSynchronize();
-	}
 
 
+ 	__global__ void add_mat_child1(mat*, const u32, const u32);
+	__global__ void add_mat_child2(mat*, const mat*, const mat*, const u32, const u32, const u32);
 	/**
 	 * c = a+b.
 	 *
@@ -199,6 +202,30 @@ namespace pass_blas {
 	 * @param a the augend matrix.
 	 * @param b the addend matrix.
 	 */
+	__device__ inline void add_mat(mat* c, const mat* a, const mat* b) {
+		u32 mra = m_rows(a);
+		u32 mrb = m_rows(b);
+		u32 mrc = m_rows(c);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_cols(c) = nca;
+		add_mat_child1<<<1, nca>>>(c, mrc, nra);
+		add_mat_child2<<<nra, nca>>>(c, a, b, mrc, mra, mrb);
+		cudaDeviceSynchronize();
+	}
+	
+ 	__global__ void add_mat_child1(mat* c, const u32 mrc, const u32 nra) {
+		u32 tid = threadIdx.x;
+		n_ents(coldev(c, mrc, tid)) = nra;
+		m_ents(coldev(c, mrc, tid)) = mrc;
+	}
+	
+	__global__ void add_mat_child2(mat* c, const mat* a, const mat* b, const u32 mrc, const u32 mra, const u32 mrb) {
+		u32 bid = blockIdx.x;
+		u32 tid = threadIdx.x;
+		entry2dev(c, mrc, bid, tid) = entry2dev(a, mra, bid, tid) + entry2dev(b, mrb, bid, tid);
+	}
+	
 	__host__ void add_mat_host(mat* c, const mat* a, const mat* b) {
 		//if(m_rows(c) != m_rows(a) || m_rows(c) != m_rows(b) || m_cols(c) != m_cols(a) || m_cols(c) != m_cols(b)) {
 		//	printf("Warning: add_mat overflowed!\n");
@@ -216,24 +243,9 @@ namespace pass_blas {
 			}
 		}
 	}
-	
- 	__global__ void add_mat_child1(mat* c, const mat* a) {
-		n_ents(col(c, threadIdx.x)) = n_rows(a);
-		m_ents(col(c, threadIdx.x)) = m_rows(c);
-	}
-	
-	__global__ void add_mat_child2(mat* c, const mat* a, const mat* b) {
-		entry2(c, blockIdx.x, threadIdx.x) = entry2(a, blockIdx.x, threadIdx.x) + entry2(b, blockIdx.x, threadIdx.x);
-	}
-	
-	__device__ inline void add_mat(mat* c, const mat* a, const mat* b) {
-		n_cols(c) = n_cols(a);
-		add_mat_child1<<<1, n_cols(a)>>>(c, a);
-		add_mat_child2<<<n_rows(a), n_cols(a)>>>(c, a, b);
-		cudaDeviceSynchronize();
-	}
 
 
+	__global__ void sub_vec_child(vec*, const vec*, const vec*);
 	/**
 	 * u = v-w.
 	 *
@@ -241,6 +253,17 @@ namespace pass_blas {
 	 * @param v the minuend vector.
 	 * @param w the subtrahend vector.
 	 */
+	__device__ inline void sub_vec(vec* u, const vec* v, const vec* w) {
+		n_ents(u) = n_ents(v);
+		sub_vec_child<<<1, n_ents(u)>>>(u, v, w);
+		cudaDeviceSynchronize();
+	}
+	
+	__global__ void sub_vec_child(vec* u, const vec* v, const vec* w) {
+		u32 tid = threadIdx.x;
+		entry(u, tid) = entry(v, tid) - entry(w, tid);
+	}
+	
 	__host__ void sub_vec_host(vec* u, const vec* v, const vec* w) {
 		//if(m_ents(u) != m_ents(v) || m_ents(u) != m_ents(w)) {
 		//	printf("Warning: sub_vec overflowed!\n");
@@ -255,17 +278,10 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void sub_vec_child(vec* u, const vec* v, const vec* w) {
-		entry(u, threadIdx.x) = entry(v, threadIdx.x) - entry(w, threadIdx.x);
-	}
-	
-	__device__ inline void sub_vec(vec* u, const vec* v, const vec* w) {
-		n_ents(u) = n_ents(v);
-		sub_vec_child<<<1, n_ents(u)>>>(u, v, w);
-		cudaDeviceSynchronize();
-	}
 
 
+ 	__global__ void sub_mat_child1(mat*, const u32, const u32);
+	__global__ void sub_mat_child2(mat*, const mat*, const mat*, const u32, const u32, const u32);
 	/**
 	 * c = a-b.
 	 *
@@ -273,6 +289,30 @@ namespace pass_blas {
 	 * @param a the minuend matrix.
 	 * @param b the subtrahend matrix.
 	 */
+	__device__ inline void sub_mat(mat* c, const mat* a, const mat* b) {
+		u32 mra = m_rows(a);
+		u32 mrb = m_rows(b);
+		u32 mrc = m_rows(c);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_cols(c) = nca;
+		sub_mat_child1<<<1, nca>>>(c, mrc, nra);
+		sub_mat_child2<<<nra, nca>>>(c, a, b, mrc, mra, mrb);
+		cudaDeviceSynchronize();
+	}
+
+ 	__global__ void sub_mat_child1(mat* c, const u32 mrc, const u32 nra) {
+		u32 tid = threadIdx.x;
+		n_ents(coldev(c, mrc, tid)) = nra;
+		m_ents(coldev(c, mrc, tid)) = mrc;
+	}
+	
+	__global__ void sub_mat_child2(mat* c, const mat* a, const mat* b, const u32 mrc, const u32 mra, const u32 mrb) {
+		u32 bid = blockIdx.x;
+		u32 tid = threadIdx.x;
+		entry2dev(c, mrc, bid, tid) = entry2dev(a, mra, bid, tid) - entry2dev(b, mrb, bid, tid);
+	}
+	
 	__host__ void sub_mat_host(mat* c, const mat* a, const mat* b) {
 		//if(m_rows(c) != m_rows(a) || m_rows(c) != m_rows(b) || m_cols(c) != m_cols(a) || m_cols(c) != m_cols(b)) {
 		//	printf("Warning: sub_mat overflowed!\n");
@@ -291,23 +331,8 @@ namespace pass_blas {
 		}
 	}
 	
- 	__global__ void sub_mat_child1(mat* c, const mat* a) {
-		n_ents(col(c, threadIdx.x)) = n_rows(a);
-		m_ents(col(c, threadIdx.x)) = m_rows(c);
-	}
-	
-	__global__ void sub_mat_child2(mat* c, const mat* a, const mat* b) {
-		entry2(c, blockIdx.x, threadIdx.x) = entry2(a, blockIdx.x, threadIdx.x) - entry2(b, blockIdx.x, threadIdx.x);
-	}
-	
-	__device__ inline void sub_mat(mat* c, const mat* a, const mat* b) {
-		n_cols(c) = n_cols(a);
-		sub_mat_child1<<<1, n_cols(a)>>>(c, a);
-		sub_mat_child2<<<n_rows(a), n_cols(a)>>>(c, a, b);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void mul_vec_child(vec*, const vec*, float);
 	/**
 	 * u = f*v.
 	 *
@@ -315,6 +340,17 @@ namespace pass_blas {
 	 * @param v the multiplier vector.
 	 * @param f the multiplicand number.
 	 */
+	__device__ inline void mul_vec(vec* u, const vec* v, float f) {
+		n_ents(u) = n_ents(v);
+		mul_vec_child<<<1, n_ents(u)>>>(u, v, f);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void mul_vec_child(vec* u, const vec* v, float f) {
+		u32 tid = threadIdx.x;
+		entry(u, tid) = entry(v, tid) * f;
+	}
+	
 	__host__ void mul_vec_host(vec* u, const vec* v, float f) {
 		//if(m_ents(u) != m_ents(v)) {
 		//	printf("Warning: mul_vec overflowed!\n");
@@ -326,17 +362,9 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void mul_vec_child(vec* u, const vec* v, float f) {
-		entry(u, threadIdx.x) = entry(v, threadIdx.x) * f;
-	}
-	
-	__device__ inline void mul_vec(vec* u, const vec* v, float f) {
-		n_ents(u) = n_ents(v);
-		mul_vec_child<<<1, n_ents(u)>>>(u, v, f);
-		cudaDeviceSynchronize();
-	}
 
-
+ 	__global__ void mul_mat_child1(mat*, const u32, const u32);
+	__global__ void mul_mat_child2(mat*, const mat*, const float, const u32, const u32);
 	/**
 	 * c = f*a.
 	 *
@@ -344,7 +372,30 @@ namespace pass_blas {
 	 * @param a the multiplier vector.
 	 * @param f the multiplicand number.
 	 */
-	__host__ void mul_mat_host(mat* c, const mat* a, float f) {
+	__device__ inline void mul_mat(mat* c, const mat* a, const float f) {
+		u32 mra = m_rows(a);
+		u32 mrc = m_rows(c);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_cols(c) = nca;
+		mul_mat_child1<<<1, nca>>>(c, mrc, nra);
+		mul_mat_child2<<<nra, nca>>>(c, a, f, mrc, mra);
+		cudaDeviceSynchronize();
+	}
+
+ 	__global__ void mul_mat_child1(mat* c, const u32 mrc, const u32 nra) {
+		u32 tid = threadIdx.x;
+		n_ents(coldev(c, mrc, tid)) = nra;
+		m_ents(coldev(c, mrc, tid)) = mrc;
+	}
+	
+	__global__ void mul_mat_child2(mat* c, const mat* a, const float f, const u32 mrc, const u32 mra) {
+		u32 bid = blockIdx.x;
+		u32 tid = threadIdx.x;
+		entry2dev(c, mrc, bid, tid) = entry2dev(a, mra, bid, tid) * f;
+	}
+	
+	__host__ void mul_mat_host(mat* c, const mat* a, const float f) {
 		//if(m_rows(c) != m_rows(a) || m_cols(c) != m_cols(a)) {
 		//	printf("Warning: mul_mat overflowed!\n");
 		//}
@@ -359,23 +410,8 @@ namespace pass_blas {
 		}
 	}
 	
- 	__global__ void mul_mat_child1(mat* c, const mat* a) {
-		n_ents(col(c, threadIdx.x)) = n_rows(a);
-		m_ents(col(c, threadIdx.x)) = m_rows(c);
-	}
-	
-	__global__ void mul_mat_child2(mat* c, const mat* a, float f) {
-		entry2(c, blockIdx.x, threadIdx.x) = entry2(a, blockIdx.x, threadIdx.x) * f;
-	}
-	
-	__device__ inline void mul_mat(mat* c, const mat* a, float f) {
-		n_cols(c) = n_cols(a);
-		mul_mat_child1<<<1, n_cols(a)>>>(c, a);
-		mul_mat_child2<<<n_rows(a), n_cols(a)>>>(c, a, f);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void mul_matvec_child(vec*, const mat*, const vec*, const u32, const u32, const u32);
 	/**
 	 * u = a*v <br>
 	 *
@@ -384,7 +420,34 @@ namespace pass_blas {
 	 * @param a the multiplicand matrix.
 	 * @param v the multiplier vector.
 	 */
-	__host__ __device__ void mul_matvec(vec* u, const mat* a, const vec* v) {
+	__device__ inline void mul_matvec(vec* u, const mat* a, const vec* v) {
+		u32 mra = m_rows(a);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_ents(u) = nra;
+		mul_matvec_child<<<1, ((nra>nca) ? nra : nca), nca * sizeof(float)>>>(u, a, v, mra, nra, nca);
+		cudaDeviceSynchronize();
+	}
+	
+	__global__ void mul_matvec_child(vec* u, const mat* a, const vec* v, const u32 mra, const u32 nra, const u32 nca) {
+		u32 tid = threadIdx.x;
+		u32 i;
+		float sum = 0;
+		extern __shared__ float vector[];
+		
+		if(tid < nca) {
+			vector[tid] = entry(v, tid);
+		}
+		__syncthreads();
+		if(tid < nra) {
+			for(i = 0; i < nca; i++) {
+				sum += entry2dev(a, mra, tid, i) * vector[i];
+			}
+			entry(u, tid) = sum;
+		}
+	}
+
+	__host__ void mul_matvec_host(vec* u, const mat* a, const vec* v) {
 		//if(m_ents(u) != m_rows(a)) {
 		//	printf("Warning: mul_matvec overflowed!");
 		//}
@@ -400,8 +463,9 @@ namespace pass_blas {
 			}
 		}
 	}
+	
 
-
+	__global__ void mul_vecmat_child(vec*, const vec*, const mat*, const u32, const u32, const u32);
 	/**
 	 * u' = v'*a (u = a'*v)
 	 *
@@ -410,7 +474,34 @@ namespace pass_blas {
 	 * @param v the multiplicand vector.
 	 * @param a the multiplier matrix.
 	 */
-	__host__ __device__ void mul_vecmat(vec* u, const vec* v, const mat* a) {
+	__device__ inline void mul_vecmat(vec* u, const vec* v, const mat* a) {
+		u32 mra = m_rows(a);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_ents(u) = nca;
+		mul_vecmat_child<<<1, ((nra>nca) ? nra : nca), nra * sizeof(float)>>>(u, v, a, mra, nra, nca);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void mul_vecmat_child(vec* u, const vec* v, const mat* a, const u32 mra, const u32 nra, const u32 nca) {
+		u32 tid = threadIdx.x;
+		u32 i;
+		float sum = 0;
+		extern __shared__ float vector[];
+		
+		if(tid < nra) {
+			vector[tid] = entry(v, tid);
+		}
+		__syncthreads();
+		if(tid < nca) {
+			for(i = 0; i < nra; i++) {
+				sum += entry2dev(a, mra, i, tid) * vector[i];
+			}
+			entry(u, tid) = sum;
+		}
+	}
+	
+	__host__ void mul_vecmat_host(vec* u, const vec* v, const mat* a) {
 		//if(m_ents(u) != m_cols(a)) {
 		//	printf("Warning: mul_vecmat overflowed!\n");
 		//}
@@ -426,8 +517,10 @@ namespace pass_blas {
 			}
 		}
 	}
+	
 
-
+	__global__ void mul_vecvec_child1(mat*, const vec*, const vec*, const u32, const u32);
+	__global__ void mul_vecvec_child2(mat*, const vec*, const vec*, const u32, const u32);
 	/**
 	 * c = v*w'
 	 *
@@ -435,7 +528,41 @@ namespace pass_blas {
 	 * @param v the multiplicand vector.
 	 * @param w the multiplier vector.
 	 */
-	__host__ __device__ void mul_vecvec(mat* c, const vec* v, const vec* w) {
+	__device__ inline void mul_vecvec(mat* c, const vec* v, const vec* w) {
+		u32 mrc = m_rows(c);
+		u32 nrc = n_ents(v);
+		u32 ncc = n_ents(w);
+		n_rows(c) = nrc;
+		n_cols(c) = ncc;
+		dim3 dimBlock(nrc, ncc);
+		mul_vecvec_child1<<<1, ncc>>>(c, v, w, mrc, nrc);
+		mul_vecvec_child2<<<1, dimBlock, (nrc + ncc) * sizeof(float)>>>(c, v, w, mrc, nrc);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void mul_vecvec_child1(mat* c, const vec* v, const vec* w, const u32 mrc, const u32 nrc) {
+		u32 tid = threadIdx.x;
+		n_ents(coldev(c, mrc, tid)) = nrc;
+		m_ents(coldev(c, mrc, tid)) = mrc;
+	}
+	
+	__global__ void mul_vecvec_child2(mat* c, const vec* v, const vec* w, const u32 mrc, const u32 nrc) {
+		u32 tidx = threadIdx.x;
+		u32 tidy = threadIdx.y;
+		extern __shared__ float vector[];
+		
+		if(tidy == 0) {
+			vector[tidx] = entry(v, tidx);
+		}
+		if(tidx == 0) {
+			vector[nrc+tidy] = entry(w, tidy);
+		}
+		__syncthreads();
+		
+		entry2dev(c, mrc, tidx, tidy) = vector[tidx] * vector[nrc+tidy];
+	}
+	
+	__host__ void mul_vecvec_host(mat* c, const vec* v, const vec* w) {
 		//if(m_rows(c) != m_ents(v) || m_cols(c) != m_ents(w)) {
 		//	printf("Warning: mul_vecvec overflowed!\n");
 		//}
@@ -450,7 +577,7 @@ namespace pass_blas {
 			}
 		}
 	}
-
+	
 
 	/**
 	 * f = sum(v.*v).
@@ -458,14 +585,27 @@ namespace pass_blas {
 	 * @param f the product number.
 	 * @param v the vector.
 	 */
-	__host__ __device__ void inner_vec(float* f, const vec* v) {
+	__device__ void inner_vec(float* f, const vec* v) {
+		u32 nv = n_ents(v);
 		u32 i;
+		float temp;
 		*f = 0;
-		for(i = 0; i < n_ents(v); i++) {
-			*f += entry(v, i) * entry(v, i);
+		for(i = 0; i < nv; i++) {
+			temp = entry(v, i);
+			*f += temp * temp;
 		}
 	}
 
+	__host__ void inner_vec_host(float* f, const vec* v) {
+		u32 i;
+		float temp;
+		*f = 0;
+		for(i = 0; i < n_ents(v); i++) {
+			temp = entry(v, i);
+			*f += temp * temp;
+		}
+	}
+	
 
 	/**
 	 * f = sum(v.*w).
@@ -474,7 +614,16 @@ namespace pass_blas {
 	 * @param w the multiplier vector.
 	 * @param f the product number.
 	 */
-	__host__ __device__ void inner_vec(float* f, const vec* v, const vec* w) {
+	__device__ void inner_vec(float* f, const vec* v, const vec* w) {
+		u32 nv = n_ents(v);
+		u32 i;
+		*f = 0;
+		for(i = 0; i < nv; i++) {
+			*f += entry(v, i) * entry(w, i);
+		}
+	}
+	
+	__host__ void inner_vec_host(float* f, const vec* v, const vec* w) {
 		//if(n_ents(v) != n_ents(w)) {
 		//	printf("(inner_vec) not aligned!\n");
 		//}
@@ -484,14 +633,36 @@ namespace pass_blas {
 			*f += entry(v, i) * entry(w, i);
 		}
 	}
+	
 
-
+	__global__ void inner_mat_child(vec*, const mat*, const u32, const u32);
 	/**
 	 * u[i] = sum(a_ith_col.*a_ith_col).
 	 *
 	 * @param u the product vector.
 	 * @param a the matrix.
 	 */
+	__device__ inline void inner_mat(vec* u, const mat* a) {
+		u32 mra = m_rows(a);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_ents(u) = nca;
+		inner_mat_child<<<1, nca>>>(u, a, mra, nra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void inner_mat_child(vec* u, const mat* a, const u32 mra, const u32 nra) {
+		u32 tid = threadIdx.x;
+		u32 i;
+		float temp, sum = 0;
+		
+		for(i = 0; i < nra; i++) {
+			temp = entry2dev(a, mra, i, tid);
+			sum += temp * temp;
+		}
+		entry(u, tid) = sum;
+	}
+	
 	__host__ void inner_mat_host(vec* u, const mat* a) {
 		//if(m_ents(u) != m_cols(a)) {
 		//	printf("Warning: inner_mat (ver1) overflowed!\n");
@@ -506,21 +677,8 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void inner_mat_child(vec* u, const mat* a) {
-		u32 i;
-		entry(u, threadIdx.x) = 0;
-		for(i = 0; i < n_rows(a); i++) {
-			entry(u, threadIdx.x) += entry2(a, i, threadIdx.x) * entry2(a, i, threadIdx.x);
-		}
-	}
-	
-	__device__ inline void inner_mat(vec* u, const mat* a) {
-		n_ents(u) = n_cols(a);
-		inner_mat_child<<<1, n_cols(a)>>>(u, a);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void inner_mat_child(vec*, const mat*, const mat*, const u32, const u32, const u32);
 	/**
 	 * u[i] = sum(a_ith_col.*b_ith_col).
 	 *
@@ -528,6 +686,27 @@ namespace pass_blas {
 	 * @param a the multiplicand matrix.
 	 * @param b the multiplier matrix.
 	 */
+	__device__ inline void inner_mat(vec* u, const mat* a, const mat* b) {
+		u32 mra = m_rows(a);
+		u32 mrb = m_rows(b);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		n_ents(u) = nca;
+		inner_mat_child<<<1, nca>>>(u, a, b, mra, mrb, nra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void inner_mat_child(vec* u, const mat* a, const mat* b, const u32 mra, const u32 mrb, const u32 nra) {
+		u32 tid = threadIdx.x;
+		u32 i;
+		float sum = 0;
+		
+		for(i = 0; i < nra; i++) {
+			sum += entry2dev(a, mra, i, tid) * entry2dev(b, mrb, i, tid);
+		}
+		entry(u, tid) = sum;
+	}
+	
 	__host__ void inner_mat_host(vec* u, const mat* a, const mat* b) {
 		//if(m_ents(u) != m_cols(a) || m_ents(u) != m_cols(b)) {
 		//	printf("Warning: inner_mat (ver2) overflowed!\n");
@@ -545,20 +724,6 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void inner_mat_child(vec* u, const mat* a, const mat* b) {
-		u32 i;
-		entry(u, threadIdx.x) = 0;
-		for(i = 0; i < n_rows(a); i++) {
-			entry(u, threadIdx.x) += entry2(a, i, threadIdx.x) * entry2(b, i, threadIdx.x);
-		}
-	}
-	
-	__device__ inline void inner_mat(vec* u, const mat* a, const mat* b) {
-		n_ents(u) = n_cols(a);
-		inner_mat_child<<<1, n_cols(a)>>>(u, a, b);
-		cudaDeviceSynchronize();
-	}
-
 
 	/**
 	 * f = norm(v, 2).
@@ -566,42 +731,70 @@ namespace pass_blas {
 	 * @param f the Euclidean norm.
 	 * @param v the vector.
 	 */
-	__host__ __device__ void norm_vec(float* f, vec* v) {
+	__device__ void norm_vec(float* f, const vec* v) {
 		inner_vec(f, v);
 		*f = sqrt(*f);
 	}
 
+	__host__ void norm_vec_host(float* f, const vec* v) {
+		inner_vec_host(f, v);
+		*f = sqrt(*f);
+	}
+	
 
 	/**
-	 * Add a new entry f at the end of a vector.
+	 * Add a new entry f at the end of a vec.
 	 *
 	 * @param v the vector.
 	 * @param f the new entry.
 	 */
-	__host__ __device__ void insert_vec(vec* v, float f) {
+	__host__ __device__ void insert_vec(vec* v, const float f) {
 		entry(v, (u32)n_ents(v)) = f;
 		n_ents(v)++;
 	}
 
 
 	/**
-	 * Add a new entry f at the end of a uvec.
+	 * Add a new entry f at the end of a u32 vector.
 	 *
 	 * @param x the index.
 	 * @param i the new entry.
 	 */
-	__host__ __device__ void insert_uvec(uvec* x, u32 i) {
+	__host__ __device__ void insert_uvec(uvec* x, const u32 i) {
 		entry(x, n_ents(x)) = i;
 		n_ents(x)++;
 	}
 
 
+	__global__ void insert_mat_child1(mat*, const float, const u32, const u32);
+	__global__ void insert_mat_child2(mat*, const float, const u32, const u32);
 	/**
 	 * Add a new row and a new column filled with f as the last row and column of a matrix.
 	 *
 	 * @param a the matrix.
 	 * @param f the number.
 	 */
+	__device__ inline void insert_mat(mat* a, const float f) {
+		u32 mra = m_rows(a);
+		u32 nra = n_rows(a);
+		u32 nca = n_cols(a);
+		insert_mat_child1<<<1, nra>>>(a, f, mra, nca);
+		insert_mat_child2<<<1, nca + 1>>>(a, f, mra, nra);
+		cudaDeviceSynchronize();
+		m_ents(coldev(a, mra, nca)) = mra;
+		n_cols(a)++;
+	}
+
+	__global__ void insert_mat_child1(mat* a, const float f, const u32 mra, const u32 nca) {
+		entry2dev(a, mra, threadIdx.x, nca) = f;
+	}
+	
+	__global__ void insert_mat_child2(mat* a, const float f, const u32 mra, const u32 nra) {
+		u32 tid = threadIdx.x;
+		entry2dev(a, mra, nra, tid) = f;
+		n_ents(coldev(a, mra, tid)) = nra + 1;
+	}
+	
 	__host__ void insert_mat_host(mat* a, float f) {
 		u32 i, nr = n_rows(a)+1;
 		n_cols(a)++;
@@ -612,35 +805,31 @@ namespace pass_blas {
 			entry2(a, (u32)n_rows(a), i) = f;
 			n_ents(col(a, i)) = nr;
 		}
-		m_ents(col(a, (u32)m_rows(a))) = m_rows(a);
+		m_ents(col(a, (u32)n_rows(a))) = m_rows(a);
 	}
 	
-	__global__ void insert_mat_child1(mat* a, float f) {
-		entry2(a, threadIdx.x, (u32)n_cols(a)) = f;
-	}
-	
-	__global__ void insert_mat_child2(mat* a, float f, u32 nr) {
-		entry2(a, (u32)n_rows(a), threadIdx.x) = f;
-		n_ents(col(a, threadIdx.x)) = nr;
-	}
-	
-	__device__ inline void insert_mat(mat* a, float f) {
-		u32 nr = n_rows(a)+1;
-		n_cols(a)++;
-		insert_mat_child1<<<1, n_rows(a)>>>(a, f);
-		insert_mat_child2<<<1, n_cols(a)>>>(a, f, nr);
-		m_ents(col(a, (u32)m_rows(a))) = m_rows(a);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void insert_row_child(mat*, const vec*, const u32, const u32);
 	/**
 	 * Let a vector be the new last row of a matrix.
 	 *
 	 * @param a the matrix.
 	 * @param v the new vector.
 	 */
-	__host__ void insert_row_host(mat* a, vec* v) {
+	__device__ inline void insert_row(mat* a, const vec* v) {
+		u32 mra = m_rows(a);
+		u32 nra = n_rows(a);
+		insert_row_child<<<1, n_cols(a)>>>(a, v, mra, nra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void insert_row_child(mat* a, const vec* v, const u32 mra, const u32 nra) {
+		u32 tid = threadIdx.x;
+		entry2dev(a, mra, nra, tid) = entry(v, tid);
+		n_ents(coldev(a, mra, tid))++;
+	}
+	
+	__host__ void insert_row_host(mat* a, const vec* v) {
 		//if(n_cols(a) != n_ents(v)) {
 		//	printf("(insert_row) not aligned!\n");
 		//}
@@ -651,16 +840,6 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void insert_row_child(mat* a, vec* v) {
-		n_ents(col(a, threadIdx.x))++;
-		entry2(a, (u32)n_rows(a), threadIdx.x) = entry(v, threadIdx.x);
-	}
-	
-	__device__ inline void insert_row(mat* a, vec* v) {
-		inner_mat_child<<<1, n_cols(a)>>>(a, v);
-		cudaDeviceSynchronize();
-	}
-
 
 	/**
 	 * Let a vector be the new last column of a matrix.
@@ -668,7 +847,7 @@ namespace pass_blas {
 	 * @param a the matrix.
 	 * @param v the new vector.
 	 */
-	__host__ __device__ void insert_col(mat* a, vec* v) {
+	__host__ __device__ void insert_col(mat* a, const vec* v) {
 		//if(n_rows(a) != n_ents(v)) {
 		//	printf("(insert_col) not aligned!\n");
 		//}
@@ -709,7 +888,7 @@ namespace pass_blas {
 	 * @param x the index.
 	 * @param n number of entries.
 	 */
-	__host__ __device__ void shed_uvec(uvec* x, u32 n) {
+	__host__ __device__ void shed_uvec(uvec* x, const u32 n) {
 		//if(n_ents(x) < n) {
 		//	printf("(shed: index) n too large!\n");
 		//}
@@ -717,11 +896,22 @@ namespace pass_blas {
 	}
 
 
+	__global__ void shed_row_child(mat*, const u32);
 	/**
 	 * Remove the last row.
 	 *
 	 * @param a the matrix.
 	 */
+	__device__ inline void shed_row(mat* a) {
+		u32 mra = m_rows(a);
+		shed_row_child<<<1, n_cols(a)>>>(a, mra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void shed_row_child(mat* a, const u32 mra) {
+		n_ents(coldev(a, mra, threadIdx.x))--;
+	}
+	
 	__host__ void shed_row_host(mat* a) {
 		//if(n_rows(a) == 0) {
 		//	printf("(shed_row) empty!\n");
@@ -732,15 +922,6 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void shed_row_child(mat* a) {
-		n_ents(col(a, threadIdx.x))--;
-	}
-	
-	__device__ inline void shed_row(mat* a) {
-		shed_row_child<<<1, n_cols(a)>>>(a);
-		cudaDeviceSynchronize();
-	}
-
 
 	/**
 	 * Remove the last column.
@@ -783,6 +964,7 @@ namespace pass_blas {
 	}
 
 
+	__global__ void swap_row_child(mat*, const u32, const u32, const u32);
 	/**
 	 * Swap two rows.
 	 *
@@ -790,6 +972,20 @@ namespace pass_blas {
 	 * @param i the index of first row.
 	 * @param j the index of second row.
 	 */
+	__device__ inline void swap_row(mat* a, const u32 i, const u32 j) {
+		u32 mra = m_rows(a);
+		swap_row_child<<<1, n_cols(a)>>>(a, i, j, mra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void swap_row_child(mat* a, const u32 i, const u32 j, const u32 mra) {
+		u32 tid = threadIdx.x;
+		float temp;
+		temp = entry2dev(a, mra, i, tid);
+		entry2dev(a, mra, i, tid) = entry2dev(a, mra, j, tid);
+		entry2dev(a, mra, j, tid) = temp;
+	}
+	
 	__host__ void swap_row_host(mat* a, const u32 i, const u32 j) {
 		u32 k;
 		float temp;
@@ -800,19 +996,8 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void swap_row_child(mat* a, const u32 i, const u32 j) {
-		float temp;
-		temp = entry2(a, i, threadIdx.x);
-		entry2(a, i, threadIdx.x) = entry2(a, j, threadIdx.x);
-		entry2(a, j, threadIdx.x) = temp;
-	}
-	
-	__device__ inline void swap_row(mat* a, const u32 i, const u32 j) {
-		swap_row_child<<<1, n_cols(a)>>>(a, i, j);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void swap_col_child(mat*, const u32, const u32, const u32);
 	/**
 	 * Swap two columns.
 	 *
@@ -820,6 +1005,20 @@ namespace pass_blas {
 	 * @param i the index of first column.
 	 * @param j the index of second column.
 	 */
+	__device__ inline void swap_col(mat* a, const u32 i, const u32 j) {
+		u32 mra = m_rows(a);
+		swap_col_child<<<1, n_rows(a)>>>(a, i, j, mra);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void swap_col_child(mat* a, const u32 i, const u32 j, const u32 mra) {
+		u32 tid = threadIdx.x;
+		float temp;
+		temp = entry2dev(a, mra, tid, i);
+		entry2dev(a, mra, tid, i) = entry2dev(a, mra, tid, j);
+		entry2dev(a, mra, tid, j) = temp;
+	}
+	
 	__host__ void swap_col_host(mat* a, const u32 i, const u32 j) {
 		u32 k;
 		float temp;
@@ -830,27 +1029,28 @@ namespace pass_blas {
 		}
 	}
 	
-	__global__ void swap_col_child(mat* a, const u32 i, const u32 j) {
-		float temp;
-		temp = entry2(a, threadIdx.x, i);
-		entry2(a, threadIdx.x, i) = entry2(a, threadIdx.x, j);
-		entry2(a, threadIdx.x, j) = temp;
-	}
-	
-	__device__ inline void swap_col(mat* a, const u32 i, const u32 j) {
-		swap_col_child<<<1, n_rows(a)>>>(a, i, j);
-		cudaDeviceSynchronize();
-	}
 
-
+	__global__ void find_index_child(u32*, const uvec*, const u32);
 	/**
-	 * Find the index of target element (avaliable only for uvec)
+	 * Find the index of target element.
 	 *
 	 * @param k the index.
 	 * @param x the vector.
 	 * @param i the element.
 	 */
-	__host__ __device__ void find_index(u32* k, const uvec* x, const u32 i) {
+	__device__ inline void find_index(u32* k, const uvec* x, const u32 i) {
+		find_index_child<<<1, n_ents(x)>>>(k, x, i);
+		cudaDeviceSynchronize();
+	}
+
+	__global__ void find_index_child(u32* k, const uvec* x, const u32 i) {
+		u32 tid = threadIdx.x;
+		if(entry(x, tid) == i) {
+			*k = tid;
+		}
+	}
+	
+	__host__ void find_index_host(u32* k, const uvec* x, const u32 i) {
 		u32 j;
 		for(j = 0; j < n_ents(x); j++) {
 			if(entry(x, j) == i) {
@@ -861,7 +1061,7 @@ namespace pass_blas {
 		*k = (u32)(-1);
 		//printf("(find_index) index not found!\n");
 	}
-
+	
 
 	/**
 	 * Find the index of minimal element
@@ -879,10 +1079,10 @@ namespace pass_blas {
 			}
 		}
 	}
-
+	
 
 	/**
-	 * Sort a uvec in ascending order
+	 * Sort a u32 vector in ascending order
 	 *
 	 * @param x the index.
 	 */
@@ -901,7 +1101,7 @@ namespace pass_blas {
 
 
 	/**
-	 * Sort a uvec in descending order
+	 * Sort a u32 vector in descending order
 	 *
 	 * @param x the index.
 	 */
@@ -993,7 +1193,7 @@ namespace pass_blas {
 	 * @param x the origin set index.
 	 * @param n the length of universe.
 	 */
-	__host__ __device__ void complement(uvec* z, uvec* x, u32 n) {
+	__host__ __device__ void complement(uvec* z, uvec* x, const u32 n) {
 		//if(m_ents(z) < n) {
 		//	printf("Warning: complement overflowed!\n");
 		//}
@@ -1018,7 +1218,7 @@ namespace pass_blas {
 	 * @param x the minuend set index.
 	 * @param y the subtrahend set index.
 	 */
-	__host__ __device__ void set_diff(uvec* z, uvec* x, uvec* y) {
+	__host__ __device__ void set_diff(uvec* z, const uvec* x, const uvec* y) {
 		//if(m_ents(z) != m_ents(x)) {
 		//	printf("Warning: set_diff overflowed!\n");
 		//}
@@ -1048,7 +1248,7 @@ namespace pass_blas {
 	 * @param sigma the minuend set index.
 	 * @param y the subtrahend set index.
 	 */
-	__host__ float randn(float mu, float sigma)
+	__host__ float randn(const float mu, const float sigma)
 	{
 		float u1, u2, w, m;
 		static float x1, x2;
