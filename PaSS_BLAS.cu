@@ -1,6 +1,16 @@
 /*
+ * PaSS with CUDA
  * PaSS_BLAS.cu
- * The basic linear algebra sub-programs for PaSS
+ * The basic linear algebra sub-programs
+ * 2014Mar13a
+ */
+
+/**
+ * @author Mu Yang
+ * @author Da-Wei Chang
+ * @author Chen-Yao Lin
+ * @date Jan. 19, 2014
+ * @version 2014Jan19a
  */
 
 #include "cuda.h"
