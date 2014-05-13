@@ -1,14 +1,15 @@
 /*
+ * PaSS with CUDA
  * PaSS.cu
- * The main functions of PaSS
+ * The main functions
  */
 
 /**@mainpage
  * @author Mu Yang
  * @author Da-Wei Chang
  * @author Chen-Yao Lin
- * @date 2014.01.19 18:16
- * @version 1.1
+ * @date Jan. 19, 2014
+ * @version 2014Jan19a
  */
 
 #include "PaSS_BLAS.cu"
@@ -21,8 +22,8 @@ using namespace pass_blas;
 using namespace std;
 
 #define PASS_MAX_N 512
-#define PASS_MAX_P 16
-#define PASS_MAX_MP 4096
+#define PASS_MAX_P 4096
+#define PASS_MAX_K 16
 #define PASS_GAMMA 1
 
 /**
@@ -66,15 +67,15 @@ namespace pass{
 	 * The data structure
 	 */
 	struct Data {
-		vec Beta[PASS_MAX_P+2];                /**< the vector beta */
+		vec Beta[PASS_MAX_K+2];                /**< the vector beta */
 		float e;                               /**< the norm of R */
-		uvec I[PASS_MAX_P+2];                  /**< the index of chosen column of X */
-		mat InvA[(PASS_MAX_P+2)*PASS_MAX_P+2]; /**< the inverse of A */
+		uvec I[PASS_MAX_K+2];                  /**< the index of chosen column of X */
+		mat InvA[(PASS_MAX_K+2)*PASS_MAX_K+2]; /**< the inverse of A */
 		float phi;                             /**< the value given by criterion */
 		vec R[PASS_MAX_N+2];                   /**< the difference between Y and Beta */
 		Stat stat;                             /**< the status */
-		vec Theta[PASS_MAX_P+2];               /**< the vector theta */
-		mat X[(PASS_MAX_N+2)*PASS_MAX_P+2];    /**< the data we chosen */
+		vec Theta[PASS_MAX_K+2];               /**< the vector theta */
+		mat X[(PASS_MAX_N+2)*PASS_MAX_K+2];    /**< the data we chosen */
 		vec Y[PASS_MAX_N+2];                   /**< the data Y */
 	};
 }
@@ -109,7 +110,7 @@ int main() {
 	// Declare variables
 	u32 host_n = 400;
 	u32 host_p = 4000;
-	Criterion host_cri = HDBIC;
+	Criterion host_cri = EBIC;
 	Parameter host_par = {32, 128, .8f, .1f, .1f, .9f, .1f};
 	
 	if(host_n > PASS_MAX_N) {
@@ -117,8 +118,8 @@ int main() {
 		system("pause");
 		return 1;
 	}
-	if(host_p > PASS_MAX_MP) {
-		printf("p must smaller than %d!\n", PASS_MAX_MP);
+	if(host_p > PASS_MAX_P) {
+		printf("p must smaller than %d!\n", PASS_MAX_P);
 		system("pause");
 		return 1;
 	}
@@ -138,14 +139,15 @@ int main() {
 	}
 	vec* host_Y = new vec[PASS_MAX_N+2];
 	m_ents(host_Y) = PASS_MAX_N;
-	uvec* host_I = new uvec[PASS_MAX_P+2];
-	n_ents(host_I) = 0;
-	m_ents(host_I) = PASS_MAX_P;
+	uvec* host_I = new uvec[PASS_MAX_K+2];
+	m_ents(host_I) = PASS_MAX_K;
 	float host_phi, time;
 	
 	const u32 nTest = 10;
 	
 	for(u32 t = 0; t < nTest; t++) {
+		n_ents(host_I) = 0;
+		
 		// Initialize data
 		pass_init(host_X, host_Y);
 			
@@ -432,7 +434,7 @@ __global__ void pass_kernel(const mat* dev_X, const vec* dev_Y, uvec* dev_I, flo
 		if(n_ents(data->I) <= 1) {
 			data->stat = forw;
 		}
-		if(n_ents(data->I) >= PASS_MAX_P-1) {
+		if(n_ents(data->I) >= PASS_MAX_K-1) {
 			data->stat = back;
 		}
 		phi_old = data->phi;
@@ -478,12 +480,12 @@ __device__ bool pass_update_fb(Data* data) {
 	switch(data->stat) {
 	case forw: // Forward
 		{
-			uvec* I_B = new uvec[PASS_MAX_P+2];
-			uvec* I_C = new uvec[PASS_MAX_P+2];
-			uvec* I_D = new uvec[PASS_MAX_P+2];
-			uvec* I_R = new uvec[PASS_MAX_MP+2];
-			m_ents(I_D) = PASS_MAX_P;
-			m_ents(I_R) = PASS_MAX_MP;
+			uvec* I_B = new uvec[PASS_MAX_K+2];
+			uvec* I_C = new uvec[PASS_MAX_K+2];
+			uvec* I_D = new uvec[PASS_MAX_K+2];
+			uvec* I_R = new uvec[PASS_MAX_P+2];
+			m_ents(I_D) = PASS_MAX_K;
+			m_ents(I_R) = PASS_MAX_P;
 
 			// Sort I_B
 			copy_uvec(I_B, I);
@@ -529,14 +531,14 @@ __device__ bool pass_update_fb(Data* data) {
 		{
 			// Determine the index to remove
 			if(curand_uniform(&seed)< par.pbl) {
-				mat* B = new mat[(PASS_MAX_N+2)*PASS_MAX_P+2];
-				vec* C = new vec[PASS_MAX_P+2];
+				mat* B = new mat[(PASS_MAX_N+2)*PASS_MAX_K+2];
+				vec* C = new vec[PASS_MAX_K+2];
 				n_cols(B) = n_cols(data->X);
-				m_cols(B) = PASS_MAX_P;
+				m_cols(B) = PASS_MAX_K;
 				for(i = 0; i < n_cols(B); i++) {
 					m_ents(col(B, i)) = PASS_MAX_N;
 				}
-				m_ents(C) = PASS_MAX_P;
+				m_ents(C) = PASS_MAX_K;
 				for(i = 0; i < n_cols(B); i++) {
 					mul_vec(col(B, i), col(data->X, i), entry(data->Beta, i));
 					add_vec(col(B, i), col(B, i), data->R);
@@ -571,27 +573,27 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 	case init: // Initial
 		{
 			n_cols(data->X) = 1;
-			m_cols(data->X) = PASS_MAX_P;
+			m_cols(data->X) = PASS_MAX_K;
 			copy_vec(col(data->X, 0), col(X, index));
 			Xnew = (vec*)col(X, index);
 			
 			n_rows(data->InvA) = 1;
 			n_cols(data->InvA) = 1;
-			m_rows(data->InvA) = PASS_MAX_P;
-			m_cols(data->InvA) = PASS_MAX_P;
+			m_rows(data->InvA) = PASS_MAX_K;
+			m_cols(data->InvA) = PASS_MAX_K;
 			float a;
 			inner_vec(&a, Xnew);
 			entry2(data->InvA, 0, 0) = 1 / a;
 			
 			n_ents(data->Theta) = 1;
-			m_ents(data->Theta) = PASS_MAX_P;
+			m_ents(data->Theta) = PASS_MAX_K;
 			inner_vec(&entry(data->Theta, 0), Xnew, Y);
 			
-			m_ents(data->Beta) = PASS_MAX_P;
+			m_ents(data->Beta) = PASS_MAX_K;
 			mul_matvec(data->Beta, data->InvA, data->Theta);
 			
 			n_ents(data->I) = 1;
-			m_ents(data->I) = PASS_MAX_P;
+			m_ents(data->I) = PASS_MAX_K;
 			entry(data->I, 0) = index;
 			
 			m_ents(data->R) = PASS_MAX_N;
@@ -605,16 +607,16 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		{
 			k = n_ents(data->I);
 			
-			vec* B = new vec[PASS_MAX_P+2];
-			vec* D = new vec[PASS_MAX_P+2];
-			mat* M = new mat[(PASS_MAX_P+2)*PASS_MAX_P+2];
+			vec* B = new vec[PASS_MAX_K+2];
+			vec* D = new vec[PASS_MAX_K+2];
+			mat* M = new mat[(PASS_MAX_K+2)*PASS_MAX_K+2];
 			float alpha;
 			float c1;
 			float c2;
-			m_ents(B) = PASS_MAX_P;
-			m_ents(D) = PASS_MAX_P;
-			m_rows(M) = PASS_MAX_P;
-			m_cols(M) = PASS_MAX_P;
+			m_ents(B) = PASS_MAX_K;
+			m_ents(D) = PASS_MAX_K;
+			m_rows(M) = PASS_MAX_K;
+			m_cols(M) = PASS_MAX_K;
 
 			copy_vec(col(data->X, k), col(X, index));
 			Xnew = col(data->X, k);
@@ -656,12 +658,12 @@ __device__ bool pass_update_cri(Data* data, const u32 index) {
 		{
 			k = n_ents(data->I) - 1;
 			u32* i = new u32[1];
-			mat* E = new mat[(PASS_MAX_P+2)*PASS_MAX_P+2];
-			vec* F = new vec[PASS_MAX_P+2];
+			mat* E = new mat[(PASS_MAX_K+2)*PASS_MAX_K+2];
+			vec* F = new vec[PASS_MAX_K+2];
 			float g;
-			m_rows(E) = PASS_MAX_P;
-			m_cols(E) = PASS_MAX_P;
-			m_ents(F) = PASS_MAX_P;
+			m_rows(E) = PASS_MAX_K;
+			m_cols(E) = PASS_MAX_K;
+			m_ents(F) = PASS_MAX_K;
 
 			find_index(i, data->I, index);
 			if(*i != k) {
